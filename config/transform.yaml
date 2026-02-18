@@ -1,0 +1,41 @@
+# configs/transform.yaml
+# (Version-control this file. You can start with the default below.)
+
+version: 1
+pipeline:
+  input_root: data/processed/current
+  output_subdir: transformed
+  resume: true
+  force_recompute: false
+
+datasets:
+  credit_cards:
+    enabled: true
+    load_api_offers: true
+    load_issuer_offers: false
+    load_nerdwallet_offers: false
+    api_offers_file: offers/creditcardbonuses_offers.json
+    flatten_api_offers: true
+    annual_spending: 25000
+
+  transactions:
+    enabled: true
+    file: synthetic/transactions.csv
+
+  users:
+    enabled: true
+    file: synthetic/user_profiles.csv
+
+cleaning:
+  max_annual_fee: 1000.0
+  min_annual_fee: 0.0
+  min_transaction_amount: 0.0
+  suspicious_amount_threshold: 10000.0
+  validate_mcc: true
+
+checkpoints:
+  enabled: true
+  format: csv
+
+logging:
+  level: INFO
