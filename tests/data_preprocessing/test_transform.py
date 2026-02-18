@@ -415,7 +415,9 @@ def test_pipeline_resume_uses_checkpoints_without_recomputing(
     # Run steps directly (avoid rewriting audit.json in same run folder)
     cards2, txns2, users2, _ = p2._step_load()
     clean_cards2, clean_txns2, clean_users2, _ = p2._step_clean(cards2, txns2, users2)
-    cards_f2, txns_f2, users_f2, _ = p2._step_features(clean_cards2, clean_txns2, clean_users2)
+    cards_f2, txns_f2, users_f2, _ = p2._step_features(
+        clean_cards2, clean_txns2, clean_users2
+    )
 
     # -------------------------
     # Then: we got feature outputs from checkpoint loads
