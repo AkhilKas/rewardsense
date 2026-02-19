@@ -24,6 +24,7 @@ from src.data_pipeline.preprocessing.normalization import (
 
 # Fixtures
 
+
 @pytest.fixture
 def numeric_df():
     """DataFrame with continuous numeric features."""
@@ -45,7 +46,13 @@ def categorical_df():
     return pd.DataFrame(
         {
             "user_id": ["u1", "u2", "u3", "u4", "u5"],
-            "primary_card": ["Chase Sapphire", "Amex Gold", "Citi DC", "Chase Sapphire", "Amex Gold"],
+            "primary_card": [
+                "Chase Sapphire",
+                "Amex Gold",
+                "Citi DC",
+                "Chase Sapphire",
+                "Amex Gold",
+            ],
             "difficulty": ["easy", "medium", "hard", "easy", "none"],
             "score": [10.0, 20.0, 30.0, 40.0, 50.0],
         }
@@ -62,12 +69,30 @@ def mixed_df():
             "avg_transaction_amount": np.random.normal(50, 15, 10),
             "spending_diversity": np.random.uniform(0, 1, 10),
             "card_switch_rate": np.random.uniform(0, 1, 10),
-            "primary_card": ["Card A", "Card B", "Card A", "Card C",
-                             "Card B", "Card A", "Card D", "Card B",
-                             "Card C", "Card A"],
-            "favorite_merchant": ["Starbucks", "Amazon", "Starbucks", "Costco",
-                                  "Amazon", "Target", "Starbucks", "Amazon",
-                                  "Costco", "Target"],
+            "primary_card": [
+                "Card A",
+                "Card B",
+                "Card A",
+                "Card C",
+                "Card B",
+                "Card A",
+                "Card D",
+                "Card B",
+                "Card C",
+                "Card A",
+            ],
+            "favorite_merchant": [
+                "Starbucks",
+                "Amazon",
+                "Starbucks",
+                "Costco",
+                "Amazon",
+                "Target",
+                "Starbucks",
+                "Amazon",
+                "Costco",
+                "Target",
+            ],
             "num_cards_used": [2, 3, 1, 4, 2, 3, 1, 2, 3, 2],
         }
     )
@@ -99,6 +124,7 @@ def mixed_config():
 
 # SafeLabelEncoder
 
+
 class TestSafeLabelEncoder:
     """Tests for the unseen-category-safe label encoder."""
 
@@ -113,10 +139,10 @@ class TestSafeLabelEncoder:
         enc = SafeLabelEncoder()
         enc.fit(["a", "b", "c"])
         result = enc.transform(["a", "d", "e", "b"])
-        assert result[0] >= 0      # 'a' is known
-        assert result[1] == -1     # 'd' unseen
-        assert result[2] == -1     # 'e' unseen
-        assert result[3] >= 0      # 'b' is known
+        assert result[0] >= 0  # 'a' is known
+        assert result[1] == -1  # 'd' unseen
+        assert result[2] == -1  # 'e' unseen
+        assert result[3] >= 0  # 'b' is known
 
     def test_inverse_transform_handles_unknown(self):
         enc = SafeLabelEncoder()
@@ -148,10 +174,13 @@ class TestSafeLabelEncoder:
 
 # FeatureNormalizer — Fitting & Transforming
 
+
 class TestFeatureNormalizerFitTransform:
     """Test fit/transform on various data configurations."""
 
-    def test_standard_scaling_produces_zero_mean_unit_var(self, numeric_df, standard_config):
+    def test_standard_scaling_produces_zero_mean_unit_var(
+        self, numeric_df, standard_config
+    ):
         norm = FeatureNormalizer(config=standard_config, name="test")
         result = norm.fit_transform(numeric_df)
 
@@ -267,6 +296,7 @@ class TestFeatureNormalizerFitTransform:
 
 # FeatureNormalizer — Persistence
 
+
 class TestFeatureNormalizerPersistence:
     """Acceptance criteria: Encoders persist and reload correctly."""
 
@@ -363,6 +393,7 @@ class TestFeatureNormalizerPersistence:
 
 # FeatureNormalizer — Reproducibility
 
+
 class TestNormalizerReproducibility:
     """Verify deterministic output."""
 
@@ -387,6 +418,7 @@ class TestNormalizerReproducibility:
 
 
 # DatasetNormConfig
+
 
 class TestDatasetNormConfig:
 
@@ -423,6 +455,7 @@ class TestDatasetNormConfig:
 
 # normalize_all_features convenience function
 
+
 class TestNormalizeAllFeatures:
 
     def test_normalizes_all_three_datasets(self, mixed_df, numeric_df):
@@ -436,7 +469,10 @@ class TestNormalizeAllFeatures:
         config = {
             "credit_cards": {"standard_scale": ["total_spending"]},
             "transactions": {"standard_scale": ["avg_transaction_amount"]},
-            "users": {"standard_scale": ["monthly_budget"], "label_encode": ["budget_quartile"]},
+            "users": {
+                "standard_scale": ["monthly_budget"],
+                "label_encode": ["budget_quartile"],
+            },
         }
         cards_n, txns_n, users_n, normalizers = normalize_all_features(
             credit_cards_df=mixed_df,
@@ -475,11 +511,14 @@ class TestNormalizeAllFeatures:
             config=config,
             save_dir=tmp_path / "norms",
         )
-        assert (tmp_path / "norms" / "credit_cards" / "normalizer_artifacts.joblib").exists()
+        assert (
+            tmp_path / "norms" / "credit_cards" / "normalizer_artifacts.joblib"
+        ).exists()
         assert (tmp_path / "norms" / "credit_cards" / "normalizer_meta.json").exists()
 
 
 # Edge Cases
+
 
 class TestEdgeCases:
 

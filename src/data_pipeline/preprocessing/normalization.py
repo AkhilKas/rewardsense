@@ -170,9 +170,13 @@ class FeatureNormalizer:
         logger.info("[%s] Fitting normalizer on %d rows", self.name, len(df))
 
         if df.empty:
-            logger.warning("[%s] Empty DataFrame — marking as fitted with no scalers", self.name)
+            logger.warning(
+                "[%s] Empty DataFrame — marking as fitted with no scalers", self.name
+            )
             self.is_fitted = True
-            self._fit_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            self._fit_timestamp = datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            )
             self._fit_row_count = 0
             return self
 
@@ -241,7 +245,9 @@ class FeatureNormalizer:
         # --- Standard scaling ---
         for col, scaler in self._standard_scalers.items():
             if col not in out.columns:
-                logger.debug("[%s] Column %s missing during transform, skipping", self.name, col)
+                logger.debug(
+                    "[%s] Column %s missing during transform, skipping", self.name, col
+                )
                 continue
             vals = out[col].to_numpy(dtype=float, na_value=np.nan).reshape(-1, 1)
             out[col] = scaler.transform(vals).ravel()
@@ -326,8 +332,7 @@ class FeatureNormalizer:
                 k: v for k, v in self._onehot_column_names.items()
             },
             "label_classes": {
-                col: enc.classes_.tolist()
-                for col, enc in self._label_encoders.items()
+                col: enc.classes_.tolist() for col, enc in self._label_encoders.items()
             },
             "standard_scaler_params": {
                 col: {"mean": s.mean_.tolist(), "scale": s.scale_.tolist()}
