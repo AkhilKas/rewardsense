@@ -1,19 +1,15 @@
 """
 Unit tests for normalization & encoding module.
 
-Story 3.4 acceptance criteria:
+Acceptance criteria:
   - Encoders persist and reload correctly
   - Normalization parameters versioned with data
   - Encoding handles unseen categories gracefully
-
-Run:
-    pytest tests/data_preprocessing/test_normalization.py -v
 """
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -26,11 +22,7 @@ from src.data_pipeline.preprocessing.normalization import (
     normalize_all_features,
 )
 
-
-# =====================================================================
 # Fixtures
-# =====================================================================
-
 
 @pytest.fixture
 def numeric_df():
@@ -105,10 +97,7 @@ def mixed_config():
     )
 
 
-# =====================================================================
 # SafeLabelEncoder
-# =====================================================================
-
 
 class TestSafeLabelEncoder:
     """Tests for the unseen-category-safe label encoder."""
@@ -157,10 +146,7 @@ class TestSafeLabelEncoder:
         assert result[2] == -1  # 'c' unseen
 
 
-# =====================================================================
 # FeatureNormalizer — Fitting & Transforming
-# =====================================================================
-
 
 class TestFeatureNormalizerFitTransform:
     """Test fit/transform on various data configurations."""
@@ -279,10 +265,7 @@ class TestFeatureNormalizerFitTransform:
         assert len(result) == 5
 
 
-# =====================================================================
 # FeatureNormalizer — Persistence
-# =====================================================================
-
 
 class TestFeatureNormalizerPersistence:
     """Acceptance criteria: Encoders persist and reload correctly."""
@@ -378,10 +361,7 @@ class TestFeatureNormalizerPersistence:
         assert result[ohe_cols].iloc[0].sum() == 0.0
 
 
-# =====================================================================
 # FeatureNormalizer — Reproducibility
-# =====================================================================
-
 
 class TestNormalizerReproducibility:
     """Verify deterministic output."""
@@ -406,10 +386,7 @@ class TestNormalizerReproducibility:
         pd.testing.assert_frame_equal(r1, r2)
 
 
-# =====================================================================
 # DatasetNormConfig
-# =====================================================================
-
 
 class TestDatasetNormConfig:
 
@@ -444,10 +421,7 @@ class TestDatasetNormConfig:
         assert cfg.all_configured_columns == ["a", "b", "c", "d", "e"]
 
 
-# =====================================================================
 # normalize_all_features convenience function
-# =====================================================================
-
 
 class TestNormalizeAllFeatures:
 
@@ -505,10 +479,7 @@ class TestNormalizeAllFeatures:
         assert (tmp_path / "norms" / "credit_cards" / "normalizer_meta.json").exists()
 
 
-# =====================================================================
 # Edge Cases
-# =====================================================================
-
 
 class TestEdgeCases:
 

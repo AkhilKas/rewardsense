@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import json
 import logging
-from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import joblib
 import numpy as np
