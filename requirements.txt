@@ -24,14 +24,17 @@ pydantic>=2.0.0,<3.0.0
 
 # Data Profiling
 ydata-profiling==4.6.4
+
 # Monitoring & Logging
 python-json-logger==2.0.7
 loguru==0.7.2
 prometheus-client==0.19.0
+
 # Cloud Services
 google-cloud-storage==2.14.0
 google-cloud-bigquery==3.17.1
 # google-cloud-sql-connector==1.7.0
+
 # Configuration Management
 python-dotenv>=1.0.0,<2.0.0
 pyyaml>=6.0.0,<7.0.0
