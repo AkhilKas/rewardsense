@@ -1,0 +1,141 @@
+# Normalization & Encoding Config
+
+version: 1
+
+# Where to persist fitted normalizer artifacts
+save_dir: models/normalizers
+
+# ── Credit Card Features (171 × 111 from FE) ────────────────────────
+credit_cards:
+  standard_scale:
+    - base_reward_rate
+    - annual_fee
+    - effective_annual_fee
+    - effective_fee_year1
+    - net_annual_cost
+    - expected_annual_rewards
+    - net_value_annual
+    - net_value_year1
+    - welcome_bonus_value_usd
+    - welcome_bonus_value_cents
+    - welcome_bonus_spend_req
+    - welcome_bonus_roi
+    - annual_credits_value
+    - universal_cashback_percent
+
+  minmax_scale:
+    - value_per_dollar
+    - welcome_bonus_days
+    - num_credits
+
+  onehot_encode: []          # FE already handled issuer/network/currency
+
+  label_encode:
+    - bonus_difficulty         # easy / medium / hard / none
+
+  passthrough:
+    - card_id
+    - card_name
+    - card_name_original
+    - issuer
+    - issuer_original
+    - issuer_clean
+    - network
+    - currency
+    - source
+    - offer_url
+    - image_url
+    - welcome_bonus
+    - welcome_bonus_parsed
+    - welcome_bonus_unit
+    - categories
+    - offers
+    - historical_offers
+    - credits
+    - last_updated
+
+# ── Transaction Features (500 × 48 from FE) ─────────────────────────
+transactions:
+  standard_scale:
+    - total_spending
+    - total_transactions
+    - avg_transaction_amount
+    - transaction_amount_std
+    - median_transaction_amount
+    - total_spending_temporal
+    - dining_total_spent
+    - groceries_total_spent
+    - gas_total_spent
+    - travel_total_spent
+    - online_shopping_total_spent
+    - entertainment_total_spent
+    - utilities_total_spent
+    - streaming_total_spent
+    - insurance_total_spent
+    - drugstore_total_spent
+    - home_improvement_total_spent
+    - transit_total_spent
+    - other_total_spent
+    - avg_spending_per_mcc
+
+  minmax_scale:
+    - spending_diversity
+    - weekend_spending_ratio
+    - card_switch_rate
+    - repeat_merchant_ratio
+    - suspicious_rate
+    - num_cards_used
+    - num_unique_mccs
+    - num_unique_merchants
+    - dining_txn_count
+    - groceries_txn_count
+    - gas_txn_count
+    - travel_txn_count
+    - online_shopping_txn_count
+    - entertainment_txn_count
+    - utilities_txn_count
+    - streaming_txn_count
+    - insurance_txn_count
+    - drugstore_txn_count
+    - home_improvement_txn_count
+    - transit_txn_count
+    - other_txn_count
+    - num_suspicious
+
+  onehot_encode: []
+
+  label_encode:
+    - primary_card
+    - favorite_merchant
+    - primary_mcc
+    - peak_spending_month
+    - peak_spending_day
+
+  passthrough:
+    - user_id
+
+# ── User Features (500 × 39 from FE) ────────────────────────────────
+users:
+  standard_scale:
+    - monthly_budget
+    - monthly_budget_log
+    - annual_budget
+    - num_cards
+
+  minmax_scale:
+    - estimated_point_value
+    - age_group_ordinal
+
+  onehot_encode: []          # FE already encoded archetype/age/location/redemption
+
+  label_encode:
+    - budget_quartile          # Q1_low / Q2_medium_low / Q3_medium_high / Q4_high
+
+  passthrough:
+    - user_id
+    - archetype
+    - age_group
+    - location_type
+    - redemption_preference
+    - cards
+    - cards_list

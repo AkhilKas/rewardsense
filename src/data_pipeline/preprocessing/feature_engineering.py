@@ -1,5 +1,5 @@
 """
-Feature Engineering Module for RewardSense
+Feature Engineering Module
 
 This module provides feature engineering transformations for:
 - Credit card data (reward rates, net value, welcome bonuses, credits)
@@ -8,9 +8,6 @@ This module provides feature engineering transformations for:
 
 All transformations are deterministic and reproducible.
 Matches actual data structure from CreditCardBonuses API and synthetic generators.
-
-Author: RewardSense Team
-Date: 2026-02-17
 """
 
 from __future__ import annotations
