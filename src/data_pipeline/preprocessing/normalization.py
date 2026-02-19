@@ -1,30 +1,10 @@
 """
-RewardSense - Data Normalization & Encoding Module
+Data Normalization & Encoding Module
 
-Story 3.4: Implements persistent, inference-safe normalization that layers
-on top of the feature engineering output (Story 3.2).
-
-Design:
-    - Fits scalers/encoders on training data, persists them via joblib.
-    - At inference time, loads the fitted artifacts and transforms new data
-      with consistent column alignment.
-    - Unseen categories map to a configurable default (zeros for OHE, -1 for label).
-    - Config-driven: a YAML file specifies which columns get which treatment
-      per dataset, keeping the logic version-controlled.
-
-Usage:
-    from src.data_pipeline.preprocessing.normalization import (
-        FeatureNormalizer, normalize_all_features,
-    )
-
-    # Fit + transform (training time)
-    normalizer = FeatureNormalizer.from_yaml(cfg, dataset_key="transactions")
-    df_norm = normalizer.fit_transform(df)
-    normalizer.save(Path("models/normalizers/transactions"))
-
-    # Transform only (inference time)
-    normalizer = FeatureNormalizer.load(Path("models/normalizers/transactions"))
-    df_norm = normalizer.transform(df_new)
+- Fits scalers/encoders on training data, persists them via joblib.
+- At inference time, loads the fitted artifacts and transforms new data with consistent column alignment.
+- Unseen categories map to a configurable default (zeros for OHE, -1 for label).
+- Config-driven: a YAML file specifies which columns get which treatment per dataset, keeping the logic version-controlled.
 """
 
 from __future__ import annotations
@@ -189,6 +169,13 @@ class FeatureNormalizer:
         same config can be reused across slightly different feature sets.
         """
         logger.info("[%s] Fitting normalizer on %d rows", self.name, len(df))
+
+        if df.empty:
+            logger.warning("[%s] Empty DataFrame — marking as fitted with no scalers", self.name)
+            self.is_fitted = True
+            self._fit_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            self._fit_row_count = 0
+            return self
 
         # --- Standard scaling ---
         for col in self._resolve_cols(self.config.standard_scale, df):
