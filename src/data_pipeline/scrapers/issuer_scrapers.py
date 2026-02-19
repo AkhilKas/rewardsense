@@ -6,9 +6,9 @@ Direct scrapers for major credit card issuers.
 Status:
     ✅ Chase - Working (BeautifulSoup)
     ✅ Discover - Working (BeautifulSoup) 
-    ❌ Amex - TODO: Requires Selenium (JS-rendered)
-    ❌ Citi - TODO: Requires Selenium (JS-rendered)
-    ❌ Capital One - TODO: Requires Selenium (JS-rendered)
+    ✅ Amex - Working (Selenium)
+    ✅ Citi - Working (Selenium)
+    ✅ Capital One - Working (Selenium)
 """
 
 import re
@@ -16,7 +16,20 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+
 from bs4 import BeautifulSoup
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+
 
 from .base_scraper import BaseScraper
 
@@ -361,22 +374,120 @@ class AmexScraper(BaseScraper):
 
     def parse_card_listing(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
-        Parse Amex credit card listing page.
+        Parse Amex credit card listing page using Selenium.
 
-        NOTE: This will return empty results without Selenium.
-        Amex uses JavaScript to render card content.
+        Amex uses a React/JS-rendered page. Card tiles use CSS module classes
+        like '_cardTileContainer_*' with card names in h2._cardTileCardNameTitle_*.
         """
-        # Check if page has content (it won't with requests)
-        body_text = soup.find("body").get_text(strip=True) if soup.find("body") else ""
-        if len(body_text) < 500:
+        if not SELENIUM_AVAILABLE:
             logger.warning(
-                "AmexScraper: Page appears to be JavaScript-rendered. "
-                "Returning empty results. TODO: Implement Selenium support."
+                "Selenium is not installed. Amex scraper requires Selenium. "
+                "Install with: pip install selenium"
             )
             return []
 
-        # TODO: Add parsing logic once Selenium is implemented
-        return []
+        cards = []
+
+        # Configure headless Chrome
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument(
+            "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        )
+
+        driver = None
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+
+            for url in self.get_card_list_urls():
+                logger.info(f"Navigating to {url}")
+                driver.get(url)
+
+                # Wait for card tile containers to render (CSS module class)
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "h2[class*='cardTileCardNameTitle']")
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Timeout waiting for cards on {url}: {e}")
+
+                # Get the rendered HTML
+                html = driver.page_source
+                rendered_soup = BeautifulSoup(html, "lxml")
+
+                # Find card tile containers using CSS module class pattern
+                card_containers = rendered_soup.find_all(
+                    "div", class_=re.compile(r"_cardTileContainer_")
+                )
+                logger.info(f"Found {len(card_containers)} Amex card tile containers")
+
+                for container in card_containers:
+                    card = self._parse_amex_card(container)
+                    if card:
+                        cards.append(card)
+
+        except Exception as e:
+            logger.error(f"Selenium error in AmexScraper: {e}")
+        finally:
+            if driver:
+                driver.quit()
+
+        return cards
+
+    def _parse_amex_card(self, container) -> Optional[Dict[str, Any]]:
+        """Parse a single Amex card container from rendered HTML."""
+        try:
+            card: Dict[str, Any] = {
+                "source": "American Express",
+                "issuer": "American Express",
+                "scraped_at": datetime.now().isoformat(),
+            }
+
+            # Extract name from h2 with CSS module class _cardTileCardNameTitle_
+            name_elem = container.find(
+                "h2", class_=re.compile(r"_cardTileCardNameTitle_")
+            )
+            if not name_elem:
+                return None
+
+            name = name_elem.get_text(strip=True)
+            # Cleanup name
+            name = name.replace("®", "").replace("℠", "").replace("™", "")
+            card["name"] = name.strip()
+
+            # Extract annual fee from text like "Annual Fee: $895"
+            full_text = container.get_text()
+            fee_match = re.search(r"Annual\s*Fee:\s*\$([0-9,]+)", full_text, re.I)
+            if fee_match:
+                card["annual_fee"] = int(fee_match.group(1).replace(",", ""))
+            elif "no annual fee" in full_text.lower() or "$0" in full_text:
+                card["annual_fee"] = 0
+            else:
+                card["annual_fee"] = 0
+
+            # Extract welcome bonus - look for points amounts before "Membership Rewards"
+            bonus_match = re.search(r"([\d,]+)\s*Membership Rewards", full_text, re.I)
+            if bonus_match:
+                points_str = bonus_match.group(1)
+                card["welcome_bonus"] = f"{points_str} Membership Rewards points"
+            else:
+                # Try cash back pattern
+                cash_match = re.search(
+                    r"\$([\d,]+)\s*(?:cash\s*back|bonus)", full_text, re.I
+                )
+                if cash_match:
+                    card["welcome_bonus"] = f"${cash_match.group(1)} cash back"
+
+            return card
+
+        except Exception as e:
+            logger.warning(f"Error parsing Amex card: {e}")
+            return None
 
     def parse_card_details(self, card_url: str) -> Optional[Dict[str, Any]]:
         return None
@@ -386,20 +497,14 @@ class CitiScraper(BaseScraper):
     """
     Scraper for Citi credit cards.
 
-    TODO: Implement with Selenium - Citi uses heavy JavaScript rendering.
-          The page body has minimal content when fetched with requests.
-
-    Implementation notes:
-        - Requires Selenium WebDriver
-        - Card comparison page loads cards via AJAX
-        - May need to handle cookie consent popups
-        - Consider scrolling to trigger lazy loading
+    Uses Selenium to scrape the "View All Cards" page, which renders
+    card tiles with h3.card-name elements inside content-container divs.
     """
 
     BASE_URL = "https://www.citi.com"
 
     CARD_URLS = {
-        "all_cards": "/credit-cards/compare-credit-cards",
+        "all_cards": "/credit-cards/view-all-credit-cards",
     }
 
     def get_source_name(self) -> str:
@@ -410,21 +515,116 @@ class CitiScraper(BaseScraper):
 
     def parse_card_listing(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
-        Parse Citi credit card listing page.
+        Parse Citi credit card listing page using Selenium.
 
-        NOTE: This will return empty results without Selenium.
-        Citi uses JavaScript to render card content.
+        Citi renders cards with h3.card-name elements inside content-container
+        divs. The "View All Cards" page lists all available credit cards.
         """
-        body_text = soup.find("body").get_text(strip=True) if soup.find("body") else ""
-        if len(body_text) < 500:
+        if not SELENIUM_AVAILABLE:
             logger.warning(
-                "CitiScraper: Page appears to be JavaScript-rendered. "
-                "Returning empty results. TODO: Implement Selenium support."
+                "Selenium is not installed. Citi scraper requires Selenium. "
+                "Install with: pip install selenium"
             )
             return []
 
-        # TODO: Add parsing logic once Selenium is implemented
-        return []
+        cards = []
+
+        # Configure headless Chrome
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument(
+            "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        )
+
+        driver = None
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+
+            for url in self.get_card_list_urls():
+                logger.info(f"Navigating to {url}")
+                driver.get(url)
+
+                # Wait for card name elements to load
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "h3.card-name")
+                        )
+                    )
+                except Exception:
+                    logger.warning(f"Timeout waiting for cards on {url}")
+
+                # Get the rendered HTML
+                html = driver.page_source
+                rendered_soup = BeautifulSoup(html, "lxml")
+
+                # Find all card name h3 elements
+                card_name_elements = rendered_soup.find_all("h3", class_="card-name")
+                logger.info(f"Found {len(card_name_elements)} Citi card-name elements")
+
+                for name_elem in card_name_elements:
+                    # Walk up to find container with fee info
+                    container = name_elem.find_parent("div", class_="content-container")
+                    if not container:
+                        container = name_elem.parent
+                    card = self._parse_citi_card(name_elem, container)
+                    if card:
+                        cards.append(card)
+
+        except Exception as e:
+            logger.error(f"Selenium error in CitiScraper: {e}")
+        finally:
+            if driver:
+                driver.quit()
+
+        return cards
+
+    def _parse_citi_card(self, name_elem, container) -> Optional[Dict[str, Any]]:
+        """Parse a single Citi card from its name element and container."""
+        try:
+            card: Dict[str, Any] = {
+                "source": "Citi",
+                "issuer": "Citi",
+                "scraped_at": datetime.now().isoformat(),
+            }
+
+            # Extract name from h3.card-name
+            name = name_elem.get_text(strip=True)
+            if not name:
+                return None
+            name = name.replace("®", "").replace("℠", "").replace("™", "")
+            card["name"] = name.strip()
+
+            # Extract annual fee from container text
+            if container:
+                text = container.get_text()
+                fee_match = re.search(r"\$([\d,]+)\s*[Aa]nnual\s*[Ff]ee", text)
+                if fee_match:
+                    card["annual_fee"] = int(fee_match.group(1).replace(",", ""))
+                elif "no annual fee" in text.lower() or "$0 annual fee" in text.lower():
+                    card["annual_fee"] = 0
+                else:
+                    card["annual_fee"] = 0
+
+                # Extract welcome bonus
+                bonus_match = re.search(
+                    r"(\d[\d,]*)\s*(?:bonus\s*)?(?:miles|points|ThankYou)",
+                    text,
+                    re.I,
+                )
+                if bonus_match:
+                    card["welcome_bonus"] = bonus_match.group(0).strip()
+                else:
+                    cash_match = re.search(r"\$(\d[\d,]*)\s*(?:cash|bonus)", text, re.I)
+                    if cash_match:
+                        card["welcome_bonus"] = f"${cash_match.group(1)} bonus"
+
+            return card
+        except Exception:
+            return None
 
     def parse_card_details(self, card_url: str) -> Optional[Dict[str, Any]]:
         return None
@@ -434,14 +634,9 @@ class CapitalOneScraper(BaseScraper):
     """
     Scraper for Capital One credit cards.
 
-    TODO: Implement with Selenium - Capital One uses JavaScript rendering
-          and may have anti-bot protection.
-
-    Implementation notes:
-        - Requires Selenium WebDriver
-        - May need to handle CAPTCHA or bot detection
-        - Consider using undetected-chromedriver
-        - Rate limiting is important to avoid blocks
+    Uses Selenium to scrape the card listing page. Capital One uses an Angular
+    app with card-details-container divs containing button.heading elements
+    for card names and attribute-list divs for fee/reward details.
     """
 
     BASE_URL = "https://www.capitalone.com"
@@ -458,21 +653,128 @@ class CapitalOneScraper(BaseScraper):
 
     def parse_card_listing(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
-        Parse Capital One card listing page.
+        Parse Capital One card listing page using Selenium.
 
-        NOTE: This will return empty results without Selenium.
-        Capital One uses JavaScript and may have bot protection.
+        Capital One uses Angular with card-details-container divs.
+        Card names are in button.heading elements, fees and rewards
+        are in attribute-list divs.
         """
-        body_text = soup.find("body").get_text(strip=True) if soup.find("body") else ""
-        if len(body_text) < 500:
+        if not SELENIUM_AVAILABLE:
             logger.warning(
-                "CapitalOneScraper: Page appears to be JavaScript-rendered. "
-                "Returning empty results. TODO: Implement Selenium support."
+                "Selenium is not installed. Capital One scraper requires Selenium. "
+                "Install with: pip install selenium"
             )
             return []
 
-        # TODO: Add parsing logic once Selenium is implemented
-        return []
+        cards = []
+
+        # Configure headless Chrome
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument(
+            "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        )
+
+        driver = None
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+
+            for url in self.get_card_list_urls():
+                logger.info(f"Navigating to {url}")
+                driver.get(url)
+
+                # Wait for card-details-container elements to render
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "div.card-details-container")
+                        )
+                    )
+                except Exception:
+                    logger.warning(f"Timeout waiting for cards on {url}")
+
+                # Get rendered HTML
+                html = driver.page_source
+                rendered_soup = BeautifulSoup(html, "lxml")
+
+                # Find card containers
+                card_containers = rendered_soup.find_all(
+                    "div", class_="card-details-container"
+                )
+                logger.info(f"Found {len(card_containers)} Capital One card containers")
+
+                seen_names = set()
+                for container in card_containers:
+                    card = self._parse_capone_card(container)
+                    if card and card["name"] not in seen_names:
+                        seen_names.add(card["name"])
+                        cards.append(card)
+
+        except Exception as e:
+            logger.error(f"Selenium error in CapitalOneScraper: {e}")
+        finally:
+            if driver:
+                driver.quit()
+
+        return cards
+
+    def _parse_capone_card(self, container) -> Optional[Dict[str, Any]]:
+        """Parse a single Capital One card container."""
+        try:
+            card: Dict[str, Any] = {
+                "source": "Capital One",
+                "issuer": "Capital One",
+                "scraped_at": datetime.now().isoformat(),
+            }
+
+            # Extract card name from button.heading element
+            name_elem = container.find("button", class_=re.compile(r"heading"))
+            if not name_elem:
+                # Fallback to any heading element
+                name_elem = container.find(["h2", "h3", "h4"])
+            if not name_elem:
+                return None
+
+            name = name_elem.get_text(strip=True)
+            if not name:
+                return None
+            name = name.replace("®", "").replace("℠", "").replace("™", "")
+            card["name"] = name.strip()
+
+            # Extract annual fee and rewards from attribute-list text
+            full_text = container.get_text(separator=" ", strip=True)
+
+            # Annual fee like "$95 annual fee" or "$0 annual fee"
+            fee_match = re.search(r"\$([\d,]+)\s*annual\s*fee", full_text, re.I)
+            if fee_match:
+                card["annual_fee"] = int(fee_match.group(1).replace(",", ""))
+            else:
+                card["annual_fee"] = 0
+
+            # Welcome bonus - look for "bonus miles" or "cash bonus"
+            bonus_match = re.search(r"([\d,]+)\s*bonus\s*miles", full_text, re.I)
+            if bonus_match:
+                card["welcome_bonus"] = f"{bonus_match.group(1)} bonus miles"
+            else:
+                cash_match = re.search(r"\$([\d,]+)\s*cash\s*bonus", full_text, re.I)
+                if cash_match:
+                    card["welcome_bonus"] = f"${cash_match.group(1)} cash bonus"
+
+            # Reward rate - look for patterns like "2X miles" or "1.5% cash back"
+            rate_match = re.search(
+                r"([\d.]+)[Xx%]\s*(miles|cash\s*back|points)", full_text, re.I
+            )
+            if rate_match:
+                card["reward_rates"] = {
+                    rate_match.group(2).lower(): rate_match.group(0).strip()
+                }
+
+            return card
+        except Exception:
+            return None
 
     def parse_card_details(self, card_url: str) -> Optional[Dict[str, Any]]:
         return None

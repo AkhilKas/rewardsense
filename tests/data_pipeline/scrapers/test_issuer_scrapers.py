@@ -4,15 +4,21 @@ RewardSense - Unit Tests for Issuer Scrapers
 Tests for issuer-specific scrapers:
     ✅ ChaseScraper - Full tests (working)
     ✅ DiscoverScraper - Full tests (working)
-    ⏭️ AmexScraper - Skipped (TODO: needs Selenium)
-    ⏭️ CitiScraper - Skipped (TODO: needs Selenium)
-    ⏭️ CapitalOneScraper - Skipped (TODO: needs Selenium)
+    ✅ AmexScraper - Full tests (Selenium, mocked in CI)
+    ✅ CitiScraper - Full tests (Selenium, mocked in CI)
+    ✅ CapitalOneScraper - Full tests (Selenium, mocked in CI)
 
 Run with: pytest tests/test_issuer_scrapers.py -v
 """
 
 import pytest
+from unittest.mock import MagicMock, patch
 from bs4 import BeautifulSoup
+
+try:
+    from selenium.common.exceptions import TimeoutException
+except ImportError:
+    TimeoutException = Exception  # type: ignore[misc,assignment]
 
 import sys
 
@@ -134,6 +140,65 @@ def empty_js_html():
     <head><title>Credit Cards</title></head>
     <body>
         <noscript>Please enable JavaScript</noscript>
+    </body>
+    </html>
+    """
+
+
+@pytest.fixture
+def amex_html():
+    """Provides sample Amex card listing HTML matching real DOM structure."""
+    return """
+    <html>
+    <body>
+        <div class="_cardTileContainer_16cp2_32">
+            <h2 class="flex flex-align-items-center _cardTileCardNameTitle_16cp2_128">American Express® Gold Card</h2>
+            <div>Annual Fee: $250</div>
+            <div>60,000 Membership Rewards points</div>
+        </div>
+        <div class="_cardTileContainer_16cp2_32">
+            <h2 class="flex flex-align-items-center _cardTileCardNameTitle_16cp2_128">Blue Cash Everyday® Card</h2>
+            <div>No Annual Fee $0</div>
+            <div>$200 cash back</div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@pytest.fixture
+def citi_html():
+    """Provides sample Citi card listing HTML matching real DOM structure."""
+    return """
+    <html>
+    <body>
+        <div class="content-container h-100">
+            <h3 class="cds-text-header card-name cds-text-header-3">Citi® Double Cash Card</h3>
+            <div>$0 Annual Fee</div>
+        </div>
+        <div class="content-container h-100">
+            <h3 class="cds-text-header card-name cds-text-header-3">Citi Premier® Card</h3>
+            <div>$95 Annual Fee</div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@pytest.fixture
+def capone_html():
+    """Provides sample Capital One card listing HTML matching real DOM structure."""
+    return """
+    <html>
+    <body>
+        <div class="card-details-container">
+            <button class="heading default-view-heading ng-star-inserted">Venture Rewards</button>
+            <div class="attribute-list">$95 annual fee 2X miles on every purchase Earn 75,000 bonus miles</div>
+        </div>
+        <div class="card-details-container">
+            <button class="heading default-view-heading ng-star-inserted">Quicksilver Rewards</button>
+            <div class="attribute-list">$0 annual fee 1.5% cash back on every purchase $200 cash bonus</div>
+        </div>
     </body>
     </html>
     """
@@ -493,7 +558,7 @@ class TestDiscoverScraper:
 
 
 class TestAmexScraper:
-    """Tests for AmexScraper (TODO: Needs Selenium)."""
+    """Tests for AmexScraper with mocked Selenium."""
 
     def test_get_source_name(self):
         """
@@ -501,14 +566,8 @@ class TestAmexScraper:
         When: get_source_name is called
         Then: It should return "American Express"
         """
-        # Given
         scraper = AmexScraper()
-
-        # When
-        name = scraper.get_source_name()
-
-        # Then
-        assert name == "American Express"
+        assert scraper.get_source_name() == "American Express"
 
     def test_get_card_list_urls_returns_amex_urls(self):
         """
@@ -516,100 +575,168 @@ class TestAmexScraper:
         When: get_card_list_urls is called
         Then: All URLs should contain "americanexpress.com"
         """
-        # Given
         scraper = AmexScraper()
-
-        # When
         urls = scraper.get_card_list_urls()
-
-        # Then
         assert len(urls) > 0
         assert all("americanexpress.com" in url for url in urls)
 
-    @pytest.mark.skip(reason="TODO: AmexScraper requires Selenium implementation")
-    def test_parse_card_listing_extracts_cards(self):
-        """Skipped: Requires Selenium implementation."""
-        pass
-
-    def test_parse_card_listing_returns_empty_for_js_rendered_page(self, empty_js_html):
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_with_mocked_selenium(self, mock_chrome, amex_html):
         """
-        Given: A JS-rendered page with empty body
+        Given: Mocked Selenium driver returning Amex HTML
         When: parse_card_listing is called
-        Then: Should return empty list with warning
+        Then: Cards should be extracted correctly
         """
         # Given
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = amex_html
+
         scraper = AmexScraper()
-        soup = BeautifulSoup(empty_js_html, "lxml")
+        soup = BeautifulSoup(
+            "", "lxml"
+        )  # Dummy soup, ignored by Selenium implementation
+
+        # When
+        cards = scraper.parse_card_listing(soup)
+
+        # Then
+        assert len(cards) == 2
+
+        gold_card = next((c for c in cards if "Gold Card" in c["name"]), None)
+        assert gold_card is not None
+        assert gold_card["annual_fee"] == 250
+        assert "60,000" in gold_card["welcome_bonus"]
+
+        blue_cash = next((c for c in cards if "Blue Cash" in c["name"]), None)
+        assert blue_cash is not None
+        assert blue_cash["annual_fee"] == 0
+        assert "$200 cash back" in blue_cash["welcome_bonus"]
+
+        # Verify Selenium calls
+        mock_driver.get.assert_called()
+        mock_driver.quit.assert_called_once()
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_handles_selenium_error(self, mock_chrome):
+        """
+        Given: Selenium driver raises an exception
+        When: parse_card_listing is called
+        Then: Should handle error gracefully and return empty list
+        """
+        # Given
+        mock_chrome.side_effect = Exception("Selenium failed")
+
+        scraper = AmexScraper()
+        soup = BeautifulSoup("", "lxml")
 
         # When
         cards = scraper.parse_card_listing(soup)
 
         # Then
         assert cards == []
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_handles_navigation_timeout(self, mock_chrome):
+        """
+        Given: Mocked driver timeouts on navigation
+        When: parse_card_listing is called
+        Then: Should catch exception and proceed/return result
+        """
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        # Make get() raise TimeoutException, or just generic Exception for simplicity as the code catches generic Exception
+        mock_driver.get.side_effect = TimeoutException("Timed out")
+
+        scraper = AmexScraper()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
+
+        # Should catch and return empty (since page_source wasn't reached/set)
+        assert cards == []
+        mock_driver.quit.assert_called()
 
 
 class TestCitiScraper:
-    """Tests for CitiScraper (TODO: Needs Selenium)."""
+    """Tests for CitiScraper with mocked Selenium."""
 
     def test_get_source_name(self):
-        """
-        Given: A CitiScraper instance
-        When: get_source_name is called
-        Then: It should return "Citi"
-        """
-        # Given
         scraper = CitiScraper()
+        assert scraper.get_source_name() == "Citi"
 
-        # When
-        name = scraper.get_source_name()
-
-        # Then
-        assert name == "Citi"
-
-    @pytest.mark.skip(reason="TODO: CitiScraper requires Selenium implementation")
-    def test_parse_card_listing_extracts_cards(self):
-        """Skipped: Requires Selenium implementation."""
-        pass
-
-    def test_parse_card_listing_returns_empty_for_js_rendered_page(self, empty_js_html):
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_with_mocked_selenium(self, mock_chrome, citi_html):
         """
-        Given: A JS-rendered page with empty body
+        Given: Mocked Selenium driver returning Citi HTML
         When: parse_card_listing is called
-        Then: Should return empty list with warning
+        Then: Cards should be extracted correctly
         """
         # Given
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = citi_html
+
         scraper = CitiScraper()
-        soup = BeautifulSoup(empty_js_html, "lxml")
 
         # When
-        cards = scraper.parse_card_listing(soup)
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
 
         # Then
-        assert cards == []
+        assert len(cards) == 2
+
+        double_cash = next((c for c in cards if "Double Cash" in c["name"]), None)
+        assert double_cash is not None
+        assert double_cash["annual_fee"] == 0
+
+        premier = next((c for c in cards if "Premier" in c["name"]), None)
+        assert premier is not None
+        assert premier["annual_fee"] == 95
+
+        mock_driver.quit.assert_called()
 
 
 class TestCapitalOneScraper:
-    """Tests for CapitalOneScraper (TODO: Needs Selenium)."""
+    """Tests for CapitalOneScraper with mocked Selenium."""
 
     def test_get_source_name(self):
+        scraper = CapitalOneScraper()
+        assert scraper.get_source_name() == "Capital One"
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_with_mocked_selenium(self, mock_chrome, capone_html):
         """
-        Given: A CapitalOneScraper instance
-        When: get_source_name is called
-        Then: It should return "Capital One"
+        Given: Mocked Selenium driver returning Capital One HTML
+        When: parse_card_listing is called
+        Then: Cards should be extracted correctly
         """
         # Given
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = capone_html
+
         scraper = CapitalOneScraper()
 
         # When
-        name = scraper.get_source_name()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
 
         # Then
-        assert name == "Capital One"
+        assert len(cards) == 2
+        assert any("Venture" in c["name"] for c in cards)
+        assert any("Quicksilver" in c["name"] for c in cards)
 
-    @pytest.mark.skip(reason="TODO: CapitalOneScraper requires Selenium implementation")
-    def test_parse_card_listing_extracts_cards(self):
-        """Skipped: Requires Selenium implementation."""
-        pass
+        venture = next((c for c in cards if "Venture" in c["name"]), None)
+        assert venture["annual_fee"] == 95
+        assert "75,000 bonus miles" in venture["welcome_bonus"]
+
+        quicksilver = next((c for c in cards if "Quicksilver" in c["name"]), None)
+        assert quicksilver["annual_fee"] == 0
+        assert "$200 cash bonus" in quicksilver["welcome_bonus"]
+
+        mock_driver.quit.assert_called()
 
 
 # =============================================================================
@@ -617,72 +744,236 @@ class TestCapitalOneScraper:
 # =============================================================================
 
 
+@patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+@patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
 class TestAllIssuerScrapersCommonBehavior:
     """Tests for behavior common to all issuer scrapers."""
 
-    def test_all_scrapers_return_list_from_parse_card_listing(self):
-        """
-        Given: All issuer scrapers
-        When: parse_card_listing is called with empty HTML
-        Then: All should return a list (possibly empty)
-        """
-        # Given
-        scrapers = [
+    def setup_method(self):
+        self.scrapers = [
             ChaseScraper(),
             AmexScraper(),
             CitiScraper(),
             CapitalOneScraper(),
             DiscoverScraper(),
         ]
+
+    def test_all_scrapers_return_list_from_parse_card_listing(self, mock_chrome):
+        """
+        Given: All issuer scrapers (with mocked Selenium)
+        When: parse_card_listing is called with empty HTML
+        Then: All should return a list (possibly empty)
+        """
+        # Mock the driver
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = "<html><body></body></html>"
+
         soup = BeautifulSoup("<html><body></body></html>", "lxml")
 
         # When / Then
-        for scraper in scrapers:
+        for scraper in self.scrapers:
             result = scraper.parse_card_listing(soup)
             assert isinstance(result, list), f"{scraper.get_source_name()} failed"
 
-    def test_all_scrapers_have_non_empty_urls(self):
+    def test_all_scrapers_have_non_empty_urls(self, mock_chrome):
         """
         Given: All issuer scrapers
         When: get_card_list_urls is called
         Then: All should return at least one URL
         """
-        # Given
-        scrapers = [
-            ChaseScraper(),
-            AmexScraper(),
-            CitiScraper(),
-            CapitalOneScraper(),
-            DiscoverScraper(),
-        ]
-
         # When / Then
-        for scraper in scrapers:
+        for scraper in self.scrapers:
             urls = scraper.get_card_list_urls()
             assert len(urls) > 0, f"{scraper.get_source_name()} has no URLs"
+            assert isinstance(urls, list)
 
-    def test_all_scrapers_urls_are_https(self):
+    def test_all_scrapers_urls_are_https(self, mock_chrome):
         """
         Given: All issuer scrapers
         When: get_card_list_urls is called
         Then: All URLs should use HTTPS
         """
-        # Given
-        scrapers = [
-            ChaseScraper(),
-            AmexScraper(),
-            CitiScraper(),
-            CapitalOneScraper(),
-            DiscoverScraper(),
-        ]
-
         # When / Then
-        for scraper in scrapers:
+        for scraper in self.scrapers:
             urls = scraper.get_card_list_urls()
             for url in urls:
                 assert url.startswith(
                     "https://"
                 ), f"{scraper.get_source_name()} has non-HTTPS URL: {url}"
+
+    def test_all_scrapers_return_none_or_dict_from_parse_card_details(
+        self, mock_chrome
+    ):
+        """
+        Given: All issuer scrapers
+        When: parse_card_details is called
+        Then: Should return None or a dict
+        """
+        for scraper in self.scrapers:
+            result = scraper.parse_card_details("http://example.com")
+            assert result is None or isinstance(result, dict)
+
+
+class TestAmexScraperEdgeCases:
+    """Tests for specific edge cases in AmexScraper."""
+
+    def test_parse_amex_card_missing_monitor_elements(self):
+        scraper = AmexScraper()
+        # Create a container that lacks required h2._cardTileCardNameTitle_ element
+        soup = BeautifulSoup('<div class="_cardTileContainer_16cp2_32"></div>', "lxml")
+        container = soup.div
+
+        result = scraper._parse_amex_card(container)
+        assert result is None
+
+    def test_parse_amex_card_no_annual_fee_text(self):
+        scraper = AmexScraper()
+        soup = BeautifulSoup(
+            """
+            <div class="_cardTileContainer_16cp2_32">
+                <h2 class="_cardTileCardNameTitle_16cp2_128">Test Card</h2>
+                <div>Some other text</div>
+            </div>
+            """,
+            "lxml",
+        )
+        container = soup.div
+        card = scraper._parse_amex_card(container)
+        assert card["name"] == "Test Card"
+        assert card["annual_fee"] == 0
+
+    def test_parse_amex_card_exception_safety(self):
+        scraper = AmexScraper()
+        # Pass something that causes an error, e.g. None or object without .find
+        result = scraper._parse_amex_card(None)
+        assert result is None
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.WebDriverWait", create=True)
+    def test_parse_card_listing_timeout_waits(self, mock_wait, mock_chrome):
+        # Setup mock to raise TimeoutException when until() is called
+        mock_wait.return_value.until.side_effect = Exception(
+            "Timeout"
+        )  # Using generic Exception as code catches generic Exception for warning
+
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = "<html></html>"
+
+        scraper = AmexScraper()
+        soup = BeautifulSoup("", "lxml")
+
+        # Should not raise exception, just log warning
+        cards = scraper.parse_card_listing(soup)
+        assert isinstance(cards, list)
+
+
+class TestCitiScraperEdgeCases:
+    """Tests for specific edge cases in CitiScraper."""
+
+    def test_parse_citi_card_missing_title(self):
+        scraper = CitiScraper()
+        # Empty name element
+        soup = BeautifulSoup('<h3 class="card-name"></h3>', "lxml")
+        name_elem = soup.find("h3")
+        result = scraper._parse_citi_card(name_elem, None)
+        assert result is None
+
+    def test_parse_citi_card_no_annual_fee_text(self):
+        scraper = CitiScraper()
+        soup = BeautifulSoup(
+            """
+            <div class="content-container">
+                <h3 class="card-name">Citi Test Card</h3>
+                <div>no annual fee</div>
+            </div>
+            """,
+            "lxml",
+        )
+        name_elem = soup.find("h3", class_="card-name")
+        container = soup.find("div", class_="content-container")
+        card = scraper._parse_citi_card(name_elem, container)
+        assert card["name"] == "Citi Test Card"
+        assert card["annual_fee"] == 0
+
+    def test_parse_citi_card_exception_safety(self):
+        scraper = CitiScraper()
+        result = scraper._parse_citi_card(None, None)
+        assert result is None
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.WebDriverWait", create=True)
+    def test_parse_card_listing_timeout_waits(self, mock_wait, mock_chrome):
+        mock_wait.return_value.until.side_effect = Exception("Timeout")
+
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = "<html></html>"
+
+        scraper = CitiScraper()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
+        assert isinstance(cards, list)
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_handles_selenium_error(self, mock_chrome):
+        """
+        Given: Selenium driver raises an exception
+        When: parse_card_listing is called
+        Then: Should handle error gracefully and return empty list
+        """
+        mock_chrome.side_effect = Exception("Selenium failed")
+
+        scraper = CitiScraper()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
+        assert cards == []
+
+
+class TestCapitalOneScraperEdgeCases:
+    """Tests for specific edge cases in CapitalOneScraper."""
+
+    def test_parse_capone_card_missing_title(self):
+        scraper = CapitalOneScraper()
+        soup = BeautifulSoup('<div class="card-details-container"></div>', "lxml")
+        container = soup.div
+        result = scraper._parse_capone_card(container)
+        assert result is None
+
+    def test_parse_capone_card_exception_safety(self):
+        scraper = CapitalOneScraper()
+        result = scraper._parse_capone_card(None)
+        assert result is None
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.WebDriverWait", create=True)
+    def test_parse_card_listing_timeout_waits(self, mock_wait, mock_chrome):
+        mock_wait.return_value.until.side_effect = Exception("Timeout")
+
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        mock_driver.page_source = "<html></html>"
+
+        scraper = CapitalOneScraper()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
+        assert isinstance(cards, list)
+
+    @patch("data_pipeline.scrapers.issuer_scrapers.SELENIUM_AVAILABLE", True)
+    @patch("data_pipeline.scrapers.issuer_scrapers.webdriver.Chrome", create=True)
+    def test_parse_card_listing_handles_selenium_error(self, mock_chrome):
+        """
+        Given: Selenium driver raises an exception
+        When: parse_card_listing is called
+        Then: Should handle error gracefully and return empty list
+        """
+        mock_chrome.side_effect = Exception("Selenium failed")
+
+        scraper = CapitalOneScraper()
+        cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
+        assert cards == []
 
 
 # =============================================================================
