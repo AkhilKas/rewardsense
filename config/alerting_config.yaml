@@ -1,0 +1,31 @@
+# ============================================================
+# RewardSense - Alerting Configuration
+# ============================================================
+#
+# Controls which notification channels are active, their
+# minimum severity thresholds, and throttle settings.
+#
+# Actual secrets (webhook URLs, API keys) are read from
+# environment variables — this file only references the
+# env-var names.
+# ============================================================
+
+alerting:
+  enabled: true
+
+  channels:
+    slack:
+      enabled: true
+      webhook_url_env: SLACK_WEBHOOK_URL     # env var holding the Slack webhook URL
+      channel_env: SLACK_CHANNEL             # env var holding the Slack channel ID
+      severity_min: WARNING                  # send WARNING and CRITICAL to Slack
+
+    email:
+      enabled: true
+      api_key_env: SENDGRID_API_KEY          # env var holding the SendGrid API key
+      recipients_env: ALERT_EMAIL            # env var holding comma-separated emails
+      severity_min: CRITICAL                 # only send CRITICAL alerts via email
+
+  throttle:
+    cooldown_seconds: 300                    # min seconds between identical alerts
+    dedup_window_seconds: 3600               # ignore exact-duplicate alerts within window

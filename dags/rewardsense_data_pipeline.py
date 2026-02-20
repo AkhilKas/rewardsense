@@ -11,19 +11,20 @@ Pipeline stages:
     1. Ingestion   — Scrape card data, fetch API, generate synthetic data
     2. Preprocessing — Clean, feature-engineer, and transform datasets
     3. Versioning  — Version artifacts with DVC
-    4. Reporting   — Generate pipeline execution report
+    4. Reporting   — Generate pipeline report, log metrics, send alerts
 
 Task Groups:
     ingestion/      Parallel data acquisition from multiple sources
     preprocessing/  Sequential cleaning → features → transform
     versioning/     DVC add + push (placeholder for Story 5.4)
-    reporting/      Summary report generation (placeholder for Story 5.5)
+    reporting/      Report generation, metrics logging, and alerting
 
 Notes:
     - Task callables use deferred imports (import inside function body)
       to keep DAG parsing fast and avoid import-time failures.
     - Story 5.1 defines the DAG structure with placeholder task bodies.
       Stories 5.2 and 5.3 will wire in real implementations.
+    - Story 5.5 implements monitoring, alerting, and callbacks.
 """
 
 from datetime import datetime, timedelta
@@ -75,7 +76,12 @@ everything, then versions the output with DVC.
                         │
                         ▼
 ┌───────────────── Reporting ─────────────────────┐
+│                                                  │
 │  generate_pipeline_report                        │
+│         │                                        │
+│         ├──► log_pipeline_metrics                │
+│         └──► send_pipeline_alerts                │
+│                                                  │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -91,10 +97,31 @@ everything, then versions the output with DVC.
 - Scraper config: `config/scraper_config.yaml`
 - Transform config: `config/transform.yaml`
 - Generator config: `config/generator_config.yaml`
+- Alerting config: `config/alerting_config.yaml`
 
 ### Contacts
 - **Owner**: RewardSense Team
 """
+
+
+# =============================================================================
+# Callbacks (deferred imports to keep DAG parsing lightweight)
+# =============================================================================
+
+
+def _on_task_failure(context):
+    """Route task failures to AlertDispatcher (CRITICAL)."""
+    from data_pipeline.monitoring.callbacks import on_task_failure_callback
+
+    on_task_failure_callback(context)
+
+
+def _on_dag_success(context):
+    """Send a summary alert when the full DAG succeeds."""
+    from data_pipeline.monitoring.callbacks import on_dag_success_callback
+
+    on_dag_success_callback(context)
+
 
 # =============================================================================
 # Default args
@@ -109,6 +136,7 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
     "execution_timeout": timedelta(hours=4),
     "sla": timedelta(hours=3),
+    "on_failure_callback": _on_task_failure,
 }
 
 
@@ -246,20 +274,60 @@ def _run_transform_pipeline(**context):
     return {"transform_status": "placeholder"}
 
 
+# =============================================================================
+# Reporting / Monitoring task callables  (Story 5.5)
+# =============================================================================
+
+
 def _generate_pipeline_report(**context):
     """Generate a summary report of the pipeline run."""
+    from data_pipeline.monitoring.pipeline_report import PipelineReportGenerator
+
+    generator = PipelineReportGenerator()
+    return generator.generate(context)
+
+
+def _log_pipeline_metrics(**context):
+    """Log timing, record counts, and error metrics for the pipeline run."""
+    from data_pipeline.monitoring.metrics import PipelineMetricsLogger
+
+    logger = PipelineMetricsLogger()
+    return logger.log_metrics(context)
+
+
+def _send_pipeline_alerts(**context):
+    """Send end-of-pipeline alerts via configured channels."""
     import logging
 
-    logger = logging.getLogger("airflow.task")
-    logger.info("📊 [PLACEHOLDER] Generating pipeline execution report...")
+    from data_pipeline.monitoring.alerting import AlertDispatcher, Severity
 
-    # Story 5.5 will implement full reporting
-
+    log = logging.getLogger("airflow.task")
+    ti = context.get("ti")
     dag_run = context.get("dag_run")
-    return {
-        "dag_run_id": str(dag_run.run_id) if dag_run else "unknown",
-        "status": "placeholder",
-    }
+
+    # Pull the report summary from upstream task
+    report_summary = ti.xcom_pull(task_ids="reporting.generate_pipeline_report") or {}
+
+    dag_id = dag_run.dag_id if dag_run else "unknown"
+    run_id = str(dag_run.run_id) if dag_run else "unknown"
+    duration = report_summary.get("total_duration_sec", "N/A")
+
+    message = (
+        f"Pipeline *{dag_id}* run completed.\n"
+        f"Run ID: {run_id}\n"
+        f"Duration: {duration}s\n"
+        f"Report: {report_summary.get('report_path', 'N/A')}"
+    )
+
+    dispatcher = AlertDispatcher()
+    results = dispatcher.dispatch(
+        message=message,
+        severity=Severity.INFO,
+        subject=f"Pipeline Summary: {dag_id}",
+    )
+    log.info("Alert dispatch results: %s", results)
+
+    return {"alerts_sent": results, "status": "completed"}
 
 
 # =============================================================================
@@ -276,6 +344,7 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     tags=["rewardsense", "data-pipeline", "weekly"],
+    on_success_callback=_on_dag_success,
 ) as dag:
 
     # ── Start sentinel ──────────────────────────────────────────────────
@@ -356,14 +425,29 @@ with DAG(
             doc_md="Version processed data artifacts with DVC and push to remote.",
         )
 
-    # ── Task Group: Reporting ───────────────────────────────────────────
-    with TaskGroup("reporting", tooltip="Pipeline execution summary") as reporting_group:
+    # ── Task Group: Reporting & Monitoring ──────────────────────────────
+    with TaskGroup("reporting", tooltip="Pipeline report, metrics, and alerting") as reporting_group:
 
         report = PythonOperator(
             task_id="generate_pipeline_report",
             python_callable=_generate_pipeline_report,
             doc_md="Generate summary report with card counts, cleaning stats, and timing.",
         )
+
+        metrics = PythonOperator(
+            task_id="log_pipeline_metrics",
+            python_callable=_log_pipeline_metrics,
+            doc_md="Log pipeline metrics (durations, record counts, errors) to data/metrics/.",
+        )
+
+        alerts = PythonOperator(
+            task_id="send_pipeline_alerts",
+            python_callable=_send_pipeline_alerts,
+            doc_md="Dispatch end-of-pipeline alerts to Slack and/or Email.",
+        )
+
+        # Report first, then metrics and alerts run in parallel
+        report >> [metrics, alerts]
 
     # ── End sentinel ────────────────────────────────────────────────────
     pipeline_end = EmptyOperator(

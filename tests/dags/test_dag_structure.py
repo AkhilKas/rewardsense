@@ -148,6 +148,8 @@ class TestTaskExistence:
         "versioning.version_with_dvc",
         # Reporting group
         "reporting.generate_pipeline_report",
+        "reporting.log_pipeline_metrics",
+        "reporting.send_pipeline_alerts",
     ]
 
     def test_all_expected_tasks_present(self, pipeline_dag):
@@ -192,12 +194,12 @@ class TestTaskGroups:
         ]
         assert len(versioning_tasks) == 1
 
-    def test_reporting_group_has_one_task(self, pipeline_dag):
-        """Reporting group should contain 1 task."""
+    def test_reporting_group_has_three_tasks(self, pipeline_dag):
+        """Reporting group should contain 3 tasks (report, metrics, alerts)."""
         reporting_tasks = [
             t for t in pipeline_dag.tasks if t.task_id.startswith("reporting.")
         ]
-        assert len(reporting_tasks) == 1
+        assert len(reporting_tasks) == 3
 
 
 # =============================================================================
@@ -260,6 +262,18 @@ class TestDependencies:
             pipeline_dag, "reporting.generate_pipeline_report"
         )
         assert len(report_upstream) > 0
+
+    def test_metrics_and_alerts_follow_report(self, pipeline_dag):
+        """log_pipeline_metrics and send_pipeline_alerts depend on report."""
+        metrics_upstream = self._get_upstream_ids(
+            pipeline_dag, "reporting.log_pipeline_metrics"
+        )
+        assert "reporting.generate_pipeline_report" in metrics_upstream
+
+        alerts_upstream = self._get_upstream_ids(
+            pipeline_dag, "reporting.send_pipeline_alerts"
+        )
+        assert "reporting.generate_pipeline_report" in alerts_upstream
 
     def test_pipeline_end_is_terminal(self, pipeline_dag):
         """pipeline_end should have no downstream tasks."""
