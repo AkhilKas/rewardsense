@@ -62,11 +62,17 @@ class TransactionGenerator:
 
         if start_date is None:
             today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            self.start_date = today - timedelta(days=history_months * 30)
+            self.start_date = self._subtract_months(today, history_months)
         else:
             self.start_date = start_date
 
-        self.end_date = self.start_date + timedelta(days=history_months * 30)
+        # End date is exactly history_months calendar months after start,
+        # but never past yesterday to avoid generating future-dated transactions.
+        calculated_end = self._add_months(self.start_date, history_months)
+        yesterday = datetime.now().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=1)
+        self.end_date = min(calculated_end, yesterday)
 
     # ------------------------------------------------------------------
     # Public API
@@ -97,7 +103,9 @@ class TransactionGenerator:
         txn_counter = 0
 
         for _, user in profiles_df.iterrows():
-            user_txns, txn_counter = self._generate_user_transactions(user, txn_counter)
+            user_txns, txn_counter = self._generate_user_transactions(
+                user, txn_counter
+            )
             all_txns.extend(user_txns)
 
         df = pd.DataFrame(all_txns)
@@ -112,6 +120,39 @@ class TransactionGenerator:
         return df
 
     # ------------------------------------------------------------------
+    # Calendar helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _days_in_month(year: int, month: int) -> int:
+        """Return the number of days in a given month."""
+        import calendar
+
+        return calendar.monthrange(year, month)[1]
+
+    @staticmethod
+    def _add_months(dt: datetime, months: int) -> datetime:
+        """Add calendar months to a datetime, clamping to valid day."""
+        import calendar
+
+        month = dt.month - 1 + months
+        year = dt.year + month // 12
+        month = month % 12 + 1
+        day = min(dt.day, calendar.monthrange(year, month)[1])
+        return dt.replace(year=year, month=month, day=day)
+
+    @staticmethod
+    def _subtract_months(dt: datetime, months: int) -> datetime:
+        """Subtract calendar months from a datetime, clamping to valid day."""
+        import calendar
+
+        month = dt.month - 1 - months
+        year = dt.year + month // 12
+        month = month % 12 + 1
+        day = min(dt.day, calendar.monthrange(year, month)[1])
+        return dt.replace(year=year, month=month, day=day)
+
+    # ------------------------------------------------------------------
     # Per-user generation
     # ------------------------------------------------------------------
 
@@ -124,15 +165,15 @@ class TransactionGenerator:
         txns: List[Dict] = []
 
         # iterate month by month
-        current = self.start_date
+        current = self.start_date.replace(day=1)
         while current < self.end_date:
             month = current.month
             year = current.year
-            days_in_month = (
-                (current.replace(month=month % 12 + 1, day=1) - timedelta(days=1)).day
-                if month < 12
-                else 31
-            )
+            days_in_month = self._days_in_month(year, month)
+
+            # Clamp transaction days to not exceed end_date
+            if year == self.end_date.year and month == self.end_date.month:
+                days_in_month = min(days_in_month, self.end_date.day)
 
             for category, base_weight in archetype.category_weights.items():
                 if base_weight <= 0:
@@ -164,11 +205,8 @@ class TransactionGenerator:
                 txn_counter += len(cat_txns)
                 txns.extend(cat_txns)
 
-            # advance to next month
-            if month == 12:
-                current = current.replace(year=year + 1, month=1, day=1)
-            else:
-                current = current.replace(month=month + 1, day=1)
+            # advance to next month (always go to 1st of next month)
+            current = self._add_months(current.replace(day=1), 1)
 
         return txns, txn_counter
 
