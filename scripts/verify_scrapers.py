@@ -19,8 +19,11 @@ from data_pipeline.scrapers.issuer_scrapers import (
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("verifier")
+
 
 def verify_scraper(scraper_cls):
     """Run verification for a single scraper class."""
@@ -28,12 +31,12 @@ def verify_scraper(scraper_cls):
     print(f"\n{'='*60}")
     print(f"Verifying {scraper_name}...")
     print(f"{'='*60}")
-    
+
     try:
         scraper = scraper_cls()
         source_name = scraper.get_source_name()
         print(f"Source: {source_name}")
-        
+
         # Test 1: Get URLs
         urls = scraper.get_card_list_urls()
         print(f"Found {len(urls)} listing URLs")
@@ -44,46 +47,50 @@ def verify_scraper(scraper_cls):
         # Test 2: Fetch and parse first URL (using real methods)
         url = urls[0]
         print(f"Fetching: {url}")
-        
+
         # For non-Selenium scrapers, fetch manually if needed, but our implementation
         # of parse_card_listing expects 'soup', except Selenium ones handle their own fetching internally
         # wait, looking at implementation:
         # Chase/Discover: expects soup object passed in.
         # Amex/Citi/CapitalOne: fetches URLs internally inside parse_card_listing, ignores passed soup.
-        
+
         cards = []
         if scraper_name in ["AmexScraper", "CitiScraper", "CapitalOneScraper"]:
             # Selenium scrapers handle their own fetching
             # We pass a dummy soup
             print("Running Selenium-based scraping (this may take a moment)...")
             cards = scraper.parse_card_listing(BeautifulSoup("", "lxml"))
-            
+
         else:
             # Requests-based scrapers need fetched soup
             # BaseScraper has fetch_page method
             print("Fetching page via requests...")
             soup = scraper.fetch_page(url)
             if not soup:
-                 print(f"❌ Failed to fetch page for {scraper_name}")
-                 return False
+                print(f"❌ Failed to fetch page for {scraper_name}")
+                return False
             cards = scraper.parse_card_listing(soup)
-            
+
         print(f"Found {len(cards)} cards total.")
-        
+
         if len(cards) > 0:
             print("\n✅ SUCCESS: Retrieved at least one card.")
             first_card = cards[0]
             print(f"First Card Sample:\n{first_card}")
             return True
         else:
-            print(f"⚠️  WARNING: No cards found for {scraper_name}. This could be due to layout changes or bot protection.")
+            print(
+                f"⚠️  WARNING: No cards found for {scraper_name}. This could be due to layout changes or bot protection."
+            )
             return False
 
     except Exception as e:
         print(f"❌ ERROR running {scraper_name}: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 def main():
     scrapers = [
@@ -95,19 +102,20 @@ def main():
         CitiScraper,
         CapitalOneScraper,
     ]
-    
+
     results = {}
     print("Starting verification of all issuer scrapers.\n")
-    
+
     for scraper_cls in scrapers:
         success = verify_scraper(scraper_cls)
         results[scraper_cls.__name__] = "✅ PASS" if success else "❌ FAIL/WARN"
-        
+
     print(f"\n{'='*60}")
     print("SUMMARY")
     print(f"{'='*60}")
     for name, status in results.items():
         print(f"{name:<25}: {status}")
+
 
 if __name__ == "__main__":
     main()

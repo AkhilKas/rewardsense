@@ -34,6 +34,7 @@ from pathlib import Path
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
+from airflow.sensors.filesystem import FileSensor
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -245,45 +246,101 @@ def _merge_card_data(**context):
 def _clean_data(**context):
     """Run data cleaning on all datasets."""
     import logging
+    from data_pipeline.preprocessing.transform import TransformationPipeline
 
     logger = logging.getLogger("airflow.task")
-    logger.info("🧹 [PLACEHOLDER] Cleaning credit card, transaction, and user data...")
+    logger.info("🧹 Cleaning credit card, transaction, and user data...")
 
-    # Story 5.3 will implement:
-    #   from data_pipeline.preprocessing.cleaning import clean_all_data
-    #   results = clean_all_data(credit_cards_df, transactions_df, users_df)
+    # Run the load and clean steps of the transformation pipeline
+    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
+    # The clean step will load from raw and write clean checkpoints
+    cards_df, txns_df, users_df, load_report = pipeline._step_load()
+    clean_cards, clean_txns, clean_users, clean_report = pipeline._step_clean(
+        cards_df, txns_df, users_df
+    )
 
-    return {"datasets_cleaned": 3, "status": "placeholder"}
+    return {"status": "success", "report": clean_report}
 
 
 def _engineer_features(**context):
     """Run feature engineering on cleaned datasets."""
     import logging
+    from data_pipeline.preprocessing.transform import TransformationPipeline
 
     logger = logging.getLogger("airflow.task")
-    logger.info("⚙️ [PLACEHOLDER] Engineering features for cards and transactions...")
+    logger.info("⚙️ Engineering features for cards and transactions...")
 
-    # Story 5.3 will implement:
-    #   from data_pipeline.preprocessing.feature_engineering import (
-    #       CreditCardFeatureEngineer, TransactionFeatureEngineer
-    #   )
+    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
 
-    return {"features_engineered": 0, "status": "placeholder"}
+    # Instead of recalculating, we load the checkpoints from the previous step
+    # if checkpoints are enabled and available or continue from step_clean
+    step_name_clean = "02_cleaned"
+    ckpt_dir = pipeline._step_ckpt_dir(step_name_clean)
+    if pipeline.checkpoints_enabled and pipeline._checkpoint_exists(step_name_clean):
+        clean_cards = (
+            pipeline._load_df(ckpt_dir / "credit_cards_clean.csv")
+            if (ckpt_dir / "credit_cards_clean.csv").exists()
+            else None
+        )
+        clean_txns = (
+            pipeline._load_df(ckpt_dir / "transactions_clean.csv")
+            if (ckpt_dir / "transactions_clean.csv").exists()
+            else None
+        )
+        clean_users = (
+            pipeline._load_df(ckpt_dir / "users_clean.csv")
+            if (ckpt_dir / "users_clean.csv").exists()
+            else None
+        )
+    else:
+        # Fallback to run previous steps if checkpoints aren't found
+        cards_df, txns_df, users_df, _ = pipeline._step_load()
+        clean_cards, clean_txns, clean_users, _ = pipeline._step_clean(
+            cards_df, txns_df, users_df
+        )
+
+    cards_f, txns_f, users_f, features_report = pipeline._step_features(
+        clean_cards, clean_txns, clean_users
+    )
+
+    return {"status": "success", "report": features_report}
 
 
 def _run_transform_pipeline(**context):
     """Run the full transformation pipeline."""
     import logging
+    from data_pipeline.preprocessing.transform import TransformationPipeline
 
     logger = logging.getLogger("airflow.task")
-    logger.info("🔄 [PLACEHOLDER] Running TransformationPipeline...")
+    logger.info("🔄 Running TransformationPipeline write outputs...")
 
-    # Story 5.3 will implement:
-    #   from data_pipeline.preprocessing.transform import TransformationPipeline
-    #   pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
-    #   pipeline.run()
+    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
 
-    return {"transform_status": "placeholder"}
+    step_name_features = "03_features"
+    ckpt_dir = pipeline._step_ckpt_dir(step_name_features)
+    if pipeline.checkpoints_enabled and pipeline._checkpoint_exists(step_name_features):
+        cards_f = (
+            pipeline._load_df(ckpt_dir / "credit_cards_features.csv")
+            if (ckpt_dir / "credit_cards_features.csv").exists()
+            else None
+        )
+        txns_f = (
+            pipeline._load_df(ckpt_dir / "transactions_features.csv")
+            if (ckpt_dir / "transactions_features.csv").exists()
+            else None
+        )
+        users_f = (
+            pipeline._load_df(ckpt_dir / "users_features.csv")
+            if (ckpt_dir / "users_features.csv").exists()
+            else None
+        )
+    else:
+        # Just run the whole pipeline
+        return pipeline.run()
+
+    outputs = pipeline._write_final_outputs(cards_f, txns_f, users_f)
+
+    return {"status": "success", "outputs": outputs}
 
 
 # =============================================================================
@@ -409,6 +466,18 @@ with DAG(
         tooltip="Data cleaning, feature engineering, and transformation",
     ) as preprocessing_group:
 
+        # Let's ensure the manifest file which signifies completion of ingestion is written
+        check_raw_data_ready = FileSensor(
+            task_id="check_raw_data_ready",
+            filepath=str(
+                REPO_ROOT / "data" / "processed" / "current" / "manifest_latest.json"
+            ),
+            poke_interval=60,
+            timeout=60 * 30,  # 30 mins
+            mode="reschedule",
+            doc_md="Wait for the data ingestion manifest file to appear before proceeding.",
+        )
+
         clean = PythonOperator(
             task_id="clean_data",
             python_callable=_clean_data,
@@ -427,7 +496,7 @@ with DAG(
             doc_md="Run end-to-end TransformationPipeline with checkpointing and audit.",
         )
 
-        clean >> features >> transform
+        check_raw_data_ready >> clean >> features >> transform
 
     # ── Task Group: Versioning ──────────────────────────────────────────
     with TaskGroup(

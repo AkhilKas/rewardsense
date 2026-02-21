@@ -14,15 +14,15 @@ from pathlib import Path
 
 # Load .env before anything else
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from data_pipeline.monitoring.alerting import (
-    AlertDispatcher,
+from data_pipeline.monitoring.alerting import (  # noqa: E402
     EmailAlerter,
     Severity,
     SlackAlerter,
 )
-import os
+import os  # noqa: E402
 
 
 def test_slack():

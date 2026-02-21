@@ -25,6 +25,7 @@ default_args = {
     "retry_delay": timedelta(minutes=2),
 }
 
+
 def check_dependencies():
     """Verify that key Python packages are importable."""
     import pandas as pd
@@ -38,6 +39,7 @@ def check_dependencies():
     print(f"pyyaml: {yaml.__version__}")
     print("All core dependencies verified.")
 
+
 def check_gcp_connection():
     """
     Test GCP connectivity. This will fail gracefully until
@@ -45,6 +47,7 @@ def check_gcp_connection():
     """
     try:
         from google.cloud import storage
+
         client = storage.Client()
         buckets = list(client.list_buckets(max_results=1))
         print(f"GCP connection successful. Found {len(buckets)} bucket(s).")
@@ -53,15 +56,18 @@ def check_gcp_connection():
         # Don't raise - this is informational, not a hard failure
         # Remove this try/except once GCP is wired up
 
+
 def check_src_mount():
     """Verify that the src/ directory is accessible from within the container."""
     import os
+
     src_path = "/opt/airflow/src"
     if os.path.isdir(src_path):
         contents = os.listdir(src_path)
         print(f"src/ mounted successfully. Contents: {contents}")
     else:
         print(f"WARNING: {src_path} not found. Check volume mount.")
+
 
 with DAG(
     dag_id="setup_validation",

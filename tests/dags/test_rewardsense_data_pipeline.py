@@ -141,6 +141,7 @@ class TestTaskExistence:
         "ingestion.generate_synthetic_data",
         "ingestion.merge_card_data",
         # Preprocessing group
+        "preprocessing.check_raw_data_ready",
         "preprocessing.clean_data",
         "preprocessing.engineer_features",
         "preprocessing.run_transform_pipeline",
@@ -180,12 +181,12 @@ class TestTaskGroups:
         ]
         assert len(ingestion_tasks) == 5
 
-    def test_preprocessing_group_has_three_tasks(self, pipeline_dag):
-        """Preprocessing group should contain 3 tasks."""
+    def test_preprocessing_group_has_four_tasks(self, pipeline_dag):
+        """Preprocessing group should contain 4 tasks."""
         preprocessing_tasks = [
             t for t in pipeline_dag.tasks if t.task_id.startswith("preprocessing.")
         ]
-        assert len(preprocessing_tasks) == 3
+        assert len(preprocessing_tasks) == 4
 
     def test_versioning_group_has_one_task(self, pipeline_dag):
         """Versioning group should contain 1 task."""
@@ -237,7 +238,12 @@ class TestDependencies:
         assert "ingestion.fetch_api_data" in merge_upstream
 
     def test_preprocessing_chain(self, pipeline_dag):
-        """clean → features → transform should be sequential."""
+        """check_raw_data_ready -> clean -> features -> transform should be sequential."""
+        clean_upstream = self._get_upstream_ids(
+            pipeline_dag, "preprocessing.clean_data"
+        )
+        assert "preprocessing.check_raw_data_ready" in clean_upstream
+
         features_upstream = self._get_upstream_ids(
             pipeline_dag, "preprocessing.engineer_features"
         )
