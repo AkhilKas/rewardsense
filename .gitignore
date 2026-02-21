@@ -77,6 +77,13 @@ infrastructure/airflow_dags/__pycache__/
 !data/interim/.gitkeep
 !data/data_card.md
 
+# Profiling outputs (generated files)
+data/profiling/history/*.json
+data/profiling/reports/*.html
+data/profiling/reports/*.json
+data/profiling/visualizations/*.png
+data/profiling/visualizations/*.html
+
 # Logs
 logs/
 *.log
@@ -88,14 +95,18 @@ logs/
 htmlcov/
 .tox/
 .hypothesis/
+.ruff_cache/
 
 # Great Expectations
-uncommitted/
+gx/uncommitted/
+gx/plugins/
 .ge_store_backend_id
 
-# Cloud Credentials
+# Cloud Credentials & Data Files
 *.json
 !schemas/*.json
+!gx/expectations/*.json
+!gx/checkpoints/*.json
 *-key.json
 service-account*.json
 

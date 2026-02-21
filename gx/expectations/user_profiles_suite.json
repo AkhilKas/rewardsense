@@ -1,0 +1,105 @@
+{
+  "data_asset_type": null,
+  "expectation_suite_name": "user_profiles_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_table_columns_to_match_ordered_list",
+      "kwargs": {
+        "column_list": [
+          "user_id",
+          "archetype",
+          "monthly_budget",
+          "cards",
+          "redemption_preference",
+          "age_group",
+          "location_type"
+        ]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "user_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {
+        "column": "user_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "monthly_budget",
+        "min_value": 0,
+        "strictly": true
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "archetype",
+        "value_set": [
+          "young_professional",
+          "suburban_family",
+          "frequent_traveler",
+          "budget_conscious",
+          "high_roller",
+          "minimal_user",
+          "category_specialist"
+        ]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "age_group",
+        "value_set": [
+          "18-25",
+          "26-35",
+          "36-50",
+          "51-65",
+          "65+"
+        ]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "location_type",
+        "value_set": [
+          "urban",
+          "suburban",
+          "rural"
+        ]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "redemption_preference",
+        "value_set": [
+          "cash_back",
+          "travel_transfer",
+          "statement_credit",
+          "gift_cards",
+          "merchandise",
+          "travel_portal"
+        ]
+      },
+      "meta": {}
+    }
+  ],
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.22"
+  }
+}
