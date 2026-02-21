@@ -1,0 +1,47 @@
+# Anomaly Detection Configuration
+
+version: 1
+
+anomaly_detection:
+  # ── Missing value thresholds (as fraction of total rows) ──
+  missing_warning_threshold: 0.05    # > 5% missing → WARNING
+  missing_critical_threshold: 0.20   # > 20% missing → CRITICAL
+
+  # ── Outlier detection ──
+  iqr_multiplier: 1.5                # standard IQR fence
+  zscore_threshold: 3.0              # |z| > 3 → outlier
+  outlier_ratio_warning: 0.05        # > 5% outliers in a column → WARNING
+  outlier_ratio_critical: 0.15       # > 15% outliers → CRITICAL
+
+  # ── Distribution drift (KS test) ──
+  drift_warning_pvalue: 0.05
+  drift_critical_pvalue: 0.001
+
+  # ── Schema: required columns per dataset ──
+  required_columns:
+    credit_cards:
+      - card_name
+      - issuer
+      - annual_fee
+    transactions:
+      - transaction_id
+      - user_id
+      - date
+      - amount
+      - category
+      - mcc_code
+      - merchant
+      - card_used
+    users:
+      - user_id
+      - archetype
+      - monthly_budget
+      - redemption_preference
+
+  # ── Schema: expected dtypes per dataset ──
+  expected_dtypes:
+    transactions:
+      amount: float
+      mcc_code: int
+    users:
+      monthly_budget: float
