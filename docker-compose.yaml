@@ -27,6 +27,10 @@ x-airflow-common: &airflow-common
     - ./config:/opt/airflow/config
     - ./src:/opt/airflow/src
     - ./scripts:/opt/airflow/scripts
+    - ./data:/opt/airflow/data
+    - ./.dvc:/opt/airflow/.dvc
+    - ./.git:/opt/airflow/.git
+    - ./dvc.lock:/opt/airflow/dvc.lock
 
     - ~/.config/gcloud:/home/airflow/.config/gcloud:ro
   depends_on:

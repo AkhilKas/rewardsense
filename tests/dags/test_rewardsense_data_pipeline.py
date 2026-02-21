@@ -146,7 +146,10 @@ class TestTaskExistence:
         "preprocessing.engineer_features",
         "preprocessing.run_transform_pipeline",
         # Versioning group
-        "versioning.version_with_dvc",
+        "versioning.version_raw_data",
+        "versioning.version_processed_data",
+        "versioning.push_to_remote",
+        "versioning.commit_dvc_files",
         # Reporting group
         "reporting.generate_pipeline_report",
         "reporting.log_pipeline_metrics",
@@ -188,12 +191,12 @@ class TestTaskGroups:
         ]
         assert len(preprocessing_tasks) == 4
 
-    def test_versioning_group_has_one_task(self, pipeline_dag):
-        """Versioning group should contain 1 task."""
+    def test_versioning_group_has_four_tasks(self, pipeline_dag):
+        """Versioning group should contain 4 tasks."""
         versioning_tasks = [
             t for t in pipeline_dag.tasks if t.task_id.startswith("versioning.")
         ]
-        assert len(versioning_tasks) == 1
+        assert len(versioning_tasks) == 4
 
     def test_reporting_group_has_three_tasks(self, pipeline_dag):
         """Reporting group should contain 3 tasks (report, metrics, alerts)."""
@@ -255,12 +258,29 @@ class TestDependencies:
         assert "preprocessing.engineer_features" in transform_upstream
 
     def test_versioning_follows_preprocessing(self, pipeline_dag):
-        """version_with_dvc should depend on preprocessing completion."""
+        """version_raw_data should depend on preprocessing completion."""
         version_upstream = self._get_upstream_ids(
-            pipeline_dag, "versioning.version_with_dvc"
+            pipeline_dag, "versioning.version_raw_data"
         )
         # The upstream is the preprocessing group (via run_transform_pipeline)
         assert len(version_upstream) > 0
+
+    def test_versioning_chain(self, pipeline_dag):
+        """version_raw_data -> version_processed_data -> push_to_remote -> commit_dvc_files"""
+        processed_upstream = self._get_upstream_ids(
+            pipeline_dag, "versioning.version_processed_data"
+        )
+        assert "versioning.version_raw_data" in processed_upstream
+
+        push_upstream = self._get_upstream_ids(
+            pipeline_dag, "versioning.push_to_remote"
+        )
+        assert "versioning.version_processed_data" in push_upstream
+
+        commit_upstream = self._get_upstream_ids(
+            pipeline_dag, "versioning.commit_dvc_files"
+        )
+        assert "versioning.push_to_remote" in commit_upstream
 
     def test_reporting_follows_versioning(self, pipeline_dag):
         """generate_pipeline_report should depend on versioning."""

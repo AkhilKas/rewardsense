@@ -34,7 +34,6 @@ from pathlib import Path
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
-from airflow.sensors.filesystem import FileSensor
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -252,7 +251,7 @@ def _clean_data(**context):
     logger.info("🧹 Cleaning credit card, transaction, and user data...")
 
     # Run the load and clean steps of the transformation pipeline
-    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
+    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
     # The clean step will load from raw and write clean checkpoints
     cards_df, txns_df, users_df, load_report = pipeline._step_load()
     clean_cards, clean_txns, clean_users, clean_report = pipeline._step_clean(
@@ -270,7 +269,7 @@ def _engineer_features(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("⚙️ Engineering features for cards and transactions...")
 
-    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
+    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
 
     # Instead of recalculating, we load the checkpoints from the previous step
     # if checkpoints are enabled and available or continue from step_clean
@@ -314,7 +313,7 @@ def _run_transform_pipeline(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("🔄 Running TransformationPipeline write outputs...")
 
-    pipeline = TransformationPipeline(config_path=Path("configs/transform.yaml"))
+    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
 
     step_name_features = "03_features"
     ckpt_dir = pipeline._step_ckpt_dir(step_name_features)
@@ -467,11 +466,18 @@ with DAG(
     ) as preprocessing_group:
 
         # Let's ensure the manifest file which signifies completion of ingestion is written
-        check_raw_data_ready = FileSensor(
-            task_id="check_raw_data_ready",
-            filepath=str(
+        from airflow.sensors.python import PythonSensor
+        import os
+
+        def _check_manifest_exists():
+            manifest_path = (
                 REPO_ROOT / "data" / "processed" / "current" / "manifest_latest.json"
-            ),
+            )
+            return os.path.exists(manifest_path)
+
+        check_raw_data_ready = PythonSensor(
+            task_id="check_raw_data_ready",
+            python_callable=_check_manifest_exists,
             poke_interval=60,
             timeout=60 * 30,  # 30 mins
             mode="reschedule",
@@ -503,15 +509,35 @@ with DAG(
         "versioning", tooltip="Data versioning with DVC"
     ) as versioning_group:
 
-        version_dvc = BashOperator(
-            task_id="version_with_dvc",
-            bash_command=(
-                'echo "[PLACEHOLDER] DVC versioning — Story 5.4 will implement:" && '
-                'echo "  dvc add data/processed/current/transformed/" && '
-                'echo "  dvc push"'
-            ),
-            doc_md="Version processed data artifacts with DVC and push to remote.",
+        version_raw_data = BashOperator(
+            task_id="version_raw_data",
+            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc add data/processed/current/synthetic data/processed/current/offers || true",
+            doc_md="Version raw ingestion data using DVC.",
         )
+
+        version_processed_data = BashOperator(
+            task_id="version_processed_data",
+            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc add data/processed/current/transformed || true",
+            doc_md="Version transformed and feature-engineered data using DVC.",
+        )
+
+        push_to_remote = BashOperator(
+            task_id="push_to_remote",
+            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc push",
+            doc_md="Push DVC tracked files to the configured Google Cloud Storage remote.",
+        )
+
+        commit_dvc_files = BashOperator(
+            task_id="commit_dvc_files",
+            bash_command=(
+                "cd {{ var.value.get('repo_root', '/opt/airflow') }} && "
+                "git add data/processed/current/*.dvc dvc.lock .gitignore && "
+                "git diff-index --quiet HEAD || git commit -m 'chore(data): auto-update DVC tracking files [skip ci]'"
+            ),
+            doc_md="Commit updated DVC tracking files to Git to maintain version history.",
+        )
+
+        version_raw_data >> version_processed_data >> push_to_remote >> commit_dvc_files
 
     # ── Task Group: Reporting & Monitoring ──────────────────────────────
     with TaskGroup(

@@ -65,7 +65,7 @@ def test_clean_data_task_success(mock_pipeline_class, mock_context):
 
     # Verify instantiations and method calls
     mock_pipeline_class.assert_called_once_with(
-        config_path=Path("configs/transform.yaml")
+        config_path=Path("config/transform.yaml")
     )
     mock_instance._step_load.assert_called_once()
     mock_instance._step_clean.assert_called_once_with(mock_cards, mock_txns, mock_users)
