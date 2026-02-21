@@ -12,7 +12,7 @@ Validates that the main data pipeline DAG:
     ✅ DAG attributes (schedule, catchup, tags) are set properly
     ✅ Has documentation for UI display
 
-Run with: pytest tests/dags/test_dag_structure.py -v
+Run with: pytest tests/dags/test_rewardsense_data_pipeline.py -v
 """
 
 import pytest  # noqa: E402

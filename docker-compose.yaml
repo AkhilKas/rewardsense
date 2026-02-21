@@ -26,6 +26,7 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./config:/opt/airflow/config
     - ./src:/opt/airflow/src
+    - ./scripts:/opt/airflow/scripts
 
     - ~/.config/gcloud:/home/airflow/.config/gcloud:ro
   depends_on:

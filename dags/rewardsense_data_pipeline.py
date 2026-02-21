@@ -27,13 +27,21 @@ Notes:
     - Story 5.5 implements monitoring, alerting, and callbacks.
 """
 
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
+for _p in (str(REPO_ROOT), str(SRC_ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 
 # =============================================================================
@@ -198,7 +206,11 @@ def _fetch_api_data(**context):
     #   client = CreditCardBonusesClient()
     #   offers = client.fetch_normalized_offers()
 
-    return {"source": "creditcardbonuses_api", "offers_found": 0, "status": "placeholder"}
+    return {
+        "source": "creditcardbonuses_api",
+        "offers_found": 0,
+        "status": "placeholder",
+    }
 
 
 def _generate_synthetic_data(**context):
@@ -351,7 +363,9 @@ with DAG(
     pipeline_start = EmptyOperator(task_id="pipeline_start")
 
     # ── Task Group: Ingestion ───────────────────────────────────────────
-    with TaskGroup("ingestion", tooltip="Data acquisition from all sources") as ingestion_group:
+    with TaskGroup(
+        "ingestion", tooltip="Data acquisition from all sources"
+    ) as ingestion_group:
 
         scrape_nerdwallet = PythonOperator(
             task_id="scrape_nerdwallet",
@@ -390,7 +404,10 @@ with DAG(
         # Both merge_cards and generate_synthetic feed into preprocessing
 
     # ── Task Group: Preprocessing ───────────────────────────────────────
-    with TaskGroup("preprocessing", tooltip="Data cleaning, feature engineering, and transformation") as preprocessing_group:
+    with TaskGroup(
+        "preprocessing",
+        tooltip="Data cleaning, feature engineering, and transformation",
+    ) as preprocessing_group:
 
         clean = PythonOperator(
             task_id="clean_data",
@@ -413,7 +430,9 @@ with DAG(
         clean >> features >> transform
 
     # ── Task Group: Versioning ──────────────────────────────────────────
-    with TaskGroup("versioning", tooltip="Data versioning with DVC") as versioning_group:
+    with TaskGroup(
+        "versioning", tooltip="Data versioning with DVC"
+    ) as versioning_group:
 
         version_dvc = BashOperator(
             task_id="version_with_dvc",
@@ -426,7 +445,9 @@ with DAG(
         )
 
     # ── Task Group: Reporting & Monitoring ──────────────────────────────
-    with TaskGroup("reporting", tooltip="Pipeline report, metrics, and alerting") as reporting_group:
+    with TaskGroup(
+        "reporting", tooltip="Pipeline report, metrics, and alerting"
+    ) as reporting_group:
 
         report = PythonOperator(
             task_id="generate_pipeline_report",
