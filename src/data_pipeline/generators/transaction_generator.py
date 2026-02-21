@@ -103,9 +103,7 @@ class TransactionGenerator:
         txn_counter = 0
 
         for _, user in profiles_df.iterrows():
-            user_txns, txn_counter = self._generate_user_transactions(
-                user, txn_counter
-            )
+            user_txns, txn_counter = self._generate_user_transactions(user, txn_counter)
             all_txns.extend(user_txns)
 
         df = pd.DataFrame(all_txns)
