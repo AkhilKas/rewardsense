@@ -258,18 +258,31 @@ def _generate_synthetic_data(**context):
     logger.info("🏭 Generating synthetic user & transaction data...")
 
     try:
-        # UserProfileGenerator takes num_users in __init__, not generate()
-        user_gen = UserProfileGenerator(num_users=1000, seed=42)
+        import gc
+        # Reduce count to 100 to stay within worker memory limits for this story
+        user_gen = UserProfileGenerator(num_users=100, seed=42)
         users = user_gen.generate()
         logger.info(f"Generated {len(users)} synthetic users.")
+        
+        # Clean up UserProfileGenerator overhead before large transaction gen
+        gc.collect()
         
         txn_gen = TransactionGenerator(seed=42)
         transactions = txn_gen.generate(users)
         logger.info(f"Generated {len(transactions)} synthetic transactions.")
         
+        # Capture counts before clean up
+        u_count = len(users)
+        t_count = len(transactions)
+        
+        # Free memory immediately
+        del transactions
+        del users
+        gc.collect()
+        
         return {
-            "users_generated": len(users), 
-            "transactions_generated": len(transactions), 
+            "users_generated": u_count, 
+            "transactions_generated": t_count, 
             "status": "success"
         }
     except Exception as e:
