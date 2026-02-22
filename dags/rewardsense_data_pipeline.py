@@ -229,6 +229,9 @@ def _fetch_api_data(**context):
 
     try:
         client = CreditCardBonusesClient()
+        # Log mode for debugging
+        logger.info(f"API Client mode: {client.mode}")
+        
         offers = client.fetch_normalized_offers()
         logger.info(f"Successfully fetched {len(offers)} offers from API.")
         
@@ -238,7 +241,11 @@ def _fetch_api_data(**context):
             "status": "success",
         }
     except Exception as e:
-        logger.error(f"Failed to fetch API data: {e}")
+        logger.error(f"Failed to fetch API data: {type(e).__name__}: {e}")
+        # Log more details if it's an upstream error
+        from data_pipeline.api_fetcher import CreditCardBonusesUpstreamError
+        if isinstance(e, CreditCardBonusesUpstreamError):
+            logger.error("Context: This is an upstream error from the API/Export source.")
         raise
 
 
@@ -251,9 +258,9 @@ def _generate_synthetic_data(**context):
     logger.info("🏭 Generating synthetic user & transaction data...")
 
     try:
-        # Generate exactly as the placeholder instructed
-        user_gen = UserProfileGenerator(seed=42)
-        users = user_gen.generate(n=1000)
+        # UserProfileGenerator takes num_users in __init__, not generate()
+        user_gen = UserProfileGenerator(num_users=1000, seed=42)
+        users = user_gen.generate()
         logger.info(f"Generated {len(users)} synthetic users.")
         
         txn_gen = TransactionGenerator(seed=42)
@@ -266,7 +273,7 @@ def _generate_synthetic_data(**context):
             "status": "success"
         }
     except Exception as e:
-        logger.error(f"Failed to generate synthetic data: {e}")
+        logger.error(f"Failed to generate synthetic data: {type(e).__name__}: {e}")
         raise
 
 
