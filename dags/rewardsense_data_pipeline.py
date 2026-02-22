@@ -172,13 +172,15 @@ def _scrape_nerdwallet(**context):
         cards = scraper.scrape_all_cards()
         logger.info(f"Successfully scraped {len(cards)} cards from NerdWallet.")
         
-        # Save output to processed/current/offers directory
-        # The structure is data/processed/current/offers/NerdWallet_YYYY-MM-DD.json
-        output_dir = os.path.join("data", "processed", "current", "offers")
-        os.makedirs(output_dir, exist_ok=True)
+        # Save output to GCS processed directory
+        import json
+        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Note: actual file saving is handled securely by scraper.scrape_all_cards() 
-        # based on DVC paths, but we ensure directory exists above.
+        output_path = output_dir / "nerdwallet.json"
+        with open(output_path, "w") as f:
+            json.dump(cards, f, indent=2)
+        logger.info(f"Saved NerdWallet output to {output_path}")
         
         return {"source": "nerdwallet", "cards_found": len(cards), "status": "success"}
     except Exception as e:
@@ -210,6 +212,16 @@ def _scrape_issuers(**context):
             # Continue to next issuer even if one fails
             continue
 
+    # Save to GCS if we found anything
+    if total_cards > 0:
+        import json
+        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "issuers.json"
+        with open(output_path, "w") as f:
+            json.dump(results, f, indent=2) # simplified for now
+        logger.info(f"Saved Issuers output to {output_path}")
+
     return {
         "source": "issuers",
         "issuers_scraped": list(results.keys()),
@@ -234,6 +246,18 @@ def _fetch_api_data(**context):
         
         offers = client.fetch_normalized_offers()
         logger.info(f"Successfully fetched {len(offers)} offers from API.")
+        
+        # Save output to GCS (matches transform.yaml expected path)
+        import json
+        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "creditcardbonuses_offers.json"
+        
+        # Convert Pydantic models to dicts for JSON serialization
+        offers_dict = [o.model_dump() for o in offers]
+        with open(output_path, "w") as f:
+            json.dump(offers_dict, f, indent=2)
+        logger.info(f"Saved API output to {output_path}")
         
         return {
             "source": "creditcardbonuses_api",
@@ -270,6 +294,17 @@ def _generate_synthetic_data(**context):
         txn_gen = TransactionGenerator(seed=42)
         transactions = txn_gen.generate(users)
         logger.info(f"Generated {len(transactions)} synthetic transactions.")
+        
+        # Save to GCS (matches transform.yaml expected paths)
+        output_dir = REPO_ROOT / "data" / "processed" / "current" / "synthetic"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        user_path = output_dir / "user_profiles.csv"
+        txn_path = output_dir / "transactions.csv"
+        
+        users.to_csv(user_path, index=False)
+        transactions.to_csv(txn_path, index=False)
+        logger.info(f"Saved synthetic data to {output_dir}")
         
         # Capture counts before clean up
         u_count = len(users)
@@ -312,6 +347,25 @@ def _merge_card_data(**context):
     # Story 5.2 implementation connects the scraper outputs to the prep layer
     # For now, we return the counts merged to confirm the pipeline execution logic flowed properly
     logger.info(f"Merge metrics: NW={nw_count}, Issuers={issuer_count}, API={api_count}")
+
+    # Write manifest file to signal ingestion completion to the preprocessing phase
+    import json
+    manifest_path = REPO_ROOT / "data" / "processed" / "current" / "manifest_latest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    manifest = {
+        "timestamp": datetime.now().isoformat(),
+        "total_merged_cards": total_found,
+        "sources": {
+            "nerdwallet": nw_count,
+            "issuers": issuer_count,
+            "api": api_count
+        }
+    }
+    
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info(f"Manifest written to {manifest_path}")
 
     return {"total_merged_cards": total_found, "duplicates_removed": 0, "status": "success"}
 
