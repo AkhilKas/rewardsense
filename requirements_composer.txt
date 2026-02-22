@@ -18,3 +18,7 @@ python-dotenv>=1.0.0
 tqdm>=4.66.0
 faker>=22.0.0
 python-dateutil>=2.8.0
+
+# CRITICAL FIX: Prevent DVC from overriding Airflow core dependencies
+celery==5.4.0
+kombu==5.3.7
