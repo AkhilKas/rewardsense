@@ -1,0 +1,86 @@
+# Bias Detection & Mitigation Configuration
+
+version: 1
+
+# ── Thresholds ──────────────────────────────────────────────────────
+thresholds:
+  demographic_parity_threshold: 0.10
+  equalized_odds_threshold: 0.10
+  outcome_disparity_threshold: 2.0
+  representation_min_fraction: 0.05
+  group_metric_diff_threshold: 0.20
+
+# ── Slicing dimensions per dataset ──────────────────────────────────
+slicing:
+  users:
+    categorical:
+      - archetype
+      - age_group
+      - location_type
+      - redemption_preference
+    quantile:
+      - monthly_budget
+      - num_cards
+    metric_columns:
+      - monthly_budget
+      - num_cards
+      - estimated_point_value
+
+  transactions:
+    categorical:
+      - category
+      - card_used
+    quantile:
+      - total_spending
+      - avg_transaction_amount
+    metric_columns:
+      - total_spending
+      - avg_transaction_amount
+      - spending_diversity
+      - card_switch_rate
+
+  credit_cards:
+    categorical:
+      - issuer
+      - network
+      - currency
+    quantile:
+      - annual_fee
+      - base_reward_rate
+    metric_columns:
+      - annual_fee
+      - base_reward_rate
+      - net_value_annual
+      - welcome_bonus_value_usd
+
+# ── Bias scan: sensitive features + outcomes per dataset ────────────
+bias_scan:
+  users:
+    sensitive_features:
+      - age_group
+      - location_type
+      - archetype
+    outcome_columns:
+      - monthly_budget
+      - estimated_point_value
+
+  transactions:
+    sensitive_features:
+      - category
+    outcome_columns:
+      - total_spending
+      - avg_transaction_amount
+
+  credit_cards:
+    sensitive_features:
+      - issuer
+      - network
+    outcome_columns:
+      - net_value_annual
+      - base_reward_rate
+
+# ── Mitigation defaults ─────────────────────────────────────────────
+mitigation:
+  random_state: 42
+  default_sensitive_column: age_group
+  default_score_column: estimated_point_value
