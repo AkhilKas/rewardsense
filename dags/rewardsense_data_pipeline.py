@@ -373,20 +373,33 @@ def _merge_card_data(**context):
 def _clean_data(**context):
     """Run data cleaning on all datasets."""
     import logging
-    from data_pipeline.preprocessing.transform import TransformationPipeline
-
+    import traceback
     logger = logging.getLogger("airflow.task")
-    logger.info("🧹 Cleaning credit card, transaction, and user data...")
+    logger.info("🎬 Starting _clean_data task...")
 
-    # Run the load and clean steps of the transformation pipeline
-    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
-    # The clean step will load from raw and write clean checkpoints
-    cards_df, txns_df, users_df, load_report = pipeline._step_load()
-    clean_cards, clean_txns, clean_users, clean_report = pipeline._step_clean(
-        cards_df, txns_df, users_df
-    )
+    try:
+        from data_pipeline.preprocessing.transform import TransformationPipeline
+        
+        # Try standard project root first (local), then dags/ root (Composer)
+        config_path = REPO_ROOT / "config" / "transform.yaml"
+        if not config_path.exists():
+            config_path = REPO_ROOT / "dags" / "config" / "transform.yaml"
+        
+        logger.info(f"Using config at: {config_path}")
 
-    return {"status": "success", "report": clean_report}
+        # Run the load and clean steps of the transformation pipeline
+        pipeline = TransformationPipeline(config_path=config_path)
+        # The clean step will load from raw and write clean checkpoints
+        cards_df, txns_df, users_df, load_report = pipeline._step_load()
+        clean_cards, clean_txns, clean_users, clean_report = pipeline._step_clean(
+            cards_df, txns_df, users_df
+        )
+
+        return {"status": "success", "report": clean_report}
+    except Exception as e:
+        logger.error(f"❌ FATAL ERROR in _clean_data: {type(e).__name__}: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
 
 def _engineer_features(**context):
@@ -397,7 +410,7 @@ def _engineer_features(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("⚙️ Engineering features for cards and transactions...")
 
-    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
+    pipeline = TransformationPipeline(config_path=REPO_ROOT / "config" / "transform.yaml")
 
     # Instead of recalculating, we load the checkpoints from the previous step
     # if checkpoints are enabled and available or continue from step_clean
@@ -441,7 +454,7 @@ def _run_transform_pipeline(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("🔄 Running TransformationPipeline write outputs...")
 
-    pipeline = TransformationPipeline(config_path=Path("config/transform.yaml"))
+    pipeline = TransformationPipeline(config_path=REPO_ROOT / "config" / "transform.yaml")
 
     step_name_features = "03_features"
     ckpt_dir = pipeline._step_ckpt_dir(step_name_features)
