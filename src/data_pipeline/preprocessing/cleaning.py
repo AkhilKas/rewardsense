@@ -840,6 +840,6 @@ if __name__ == "__main__":
     print("  ✅ Configurable thresholds")
     print("  ✅ Comprehensive cleaning reports")
     print("\nUsage:")
-    print("  from src.data_pipeline.preprocessing.cleaning import clean_all_data")
+    print("  from data_pipeline.preprocessing.cleaning import clean_all_data")
     print("  cards, txns, users, report = clean_all_data(cards_df, txns_df, users_df)")
     print("=" * 70)

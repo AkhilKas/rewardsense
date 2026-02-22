@@ -1083,7 +1083,7 @@ if __name__ == "__main__":
     print("  📄 User Profiles: user_id, archetype, monthly_budget, ...")
     print("\nUsage:")
     print(
-        "  from src.data_pipeline.preprocessing.feature_engineering import engineer_all_features"
+        "  from data_pipeline.preprocessing.feature_engineering import engineer_all_features"
     )
     print(
         "  cards_f, txns_f, users_f = engineer_all_features(cards_df, txns_df, users_df)"

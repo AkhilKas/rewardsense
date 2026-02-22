@@ -17,7 +17,7 @@ from typing import List
 
 import pandas as pd
 
-from src.data_pipeline.anomaly_detection.detectors import Anomaly, AnomalySeverity
+from data_pipeline.anomaly_detection.detectors import Anomaly, AnomalySeverity
 
 logger = logging.getLogger(__name__)
 

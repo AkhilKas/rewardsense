@@ -58,8 +58,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from src.data_pipeline.preprocessing.cleaning import CleaningConfig, clean_all_data
-from src.data_pipeline.preprocessing.feature_engineering import engineer_all_features
+from data_pipeline.preprocessing.cleaning import CleaningConfig, clean_all_data
+from data_pipeline.preprocessing.feature_engineering import engineer_all_features
 
 logger = logging.getLogger(__name__)
 

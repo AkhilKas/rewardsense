@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.data_pipeline.generators.config import (
+from data_pipeline.generators.config import (
     DEFAULT_HISTORY_MONTHS,
     DEFAULT_SEASONAL_MULTIPLIER,
     DEFAULT_SEED,

@@ -5,13 +5,13 @@ Anomaly Detection Module.
 - Alert generation via bridge to existing monitoring/alerting.py
 """
 
-from src.data_pipeline.anomaly_detection.detectors import (
+from data_pipeline.anomaly_detection.detectors import (
     Anomaly,
     AnomalyDetector,
     AnomalyReport,
     AnomalySeverity,
 )
-from src.data_pipeline.anomaly_detection.rules import DomainRuleEngine
+from data_pipeline.anomaly_detection.rules import DomainRuleEngine
 
 __all__ = [
     "Anomaly",

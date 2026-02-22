@@ -6,7 +6,7 @@ various sources including aggregators (NerdWallet) and direct issuers
 (Chase, Amex, Citi, etc.).
 
 Usage:
-    from src.data_pipeline.scrapers import NerdWalletScraper, ChaseScraper
+    from data_pipeline.scrapers import NerdWalletScraper, ChaseScraper
     
     # Scrape NerdWallet
     with NerdWalletScraper(rate_limit=2.0) as scraper:

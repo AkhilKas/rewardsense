@@ -13,11 +13,11 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.data_pipeline.anomaly_detection.detectors import (
+from data_pipeline.anomaly_detection.detectors import (
     AnomalyReport,
     AnomalySeverity,
 )
-from src.data_pipeline.monitoring.alerting import AlertDispatcher, Severity
+from data_pipeline.monitoring.alerting import AlertDispatcher, Severity
 
 logger = logging.getLogger(__name__)
 

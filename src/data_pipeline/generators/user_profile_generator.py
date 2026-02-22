@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from src.data_pipeline.generators.config import (
+from data_pipeline.generators.config import (
     ARCHETYPE_DISTRIBUTION,
     CARD_PORTFOLIO_TEMPLATES,
     DEFAULT_NUM_USERS,

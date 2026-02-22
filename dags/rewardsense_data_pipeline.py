@@ -222,7 +222,7 @@ def _scrape_issuers(**context):
 def _fetch_api_data(**context):
     """Fetch credit card data from the CreditCardBonuses API."""
     import logging
-    from data_pipeline.api_fetcher.client import CreditCardBonusesClient
+    from data_pipeline.api_fetcher import CreditCardBonusesClient
 
     logger = logging.getLogger("airflow.task")
     logger.info("🌐 Fetching data from CreditCardBonuses API...")
@@ -245,8 +245,7 @@ def _fetch_api_data(**context):
 def _generate_synthetic_data(**context):
     """Generate synthetic user profiles and transaction data."""
     import logging
-    from data_pipeline.generators.user_generator import UserProfileGenerator
-    from data_pipeline.generators.transaction_generator import TransactionGenerator
+    from data_pipeline.generators import UserProfileGenerator, TransactionGenerator
 
     logger = logging.getLogger("airflow.task")
     logger.info("🏭 Generating synthetic user & transaction data...")
