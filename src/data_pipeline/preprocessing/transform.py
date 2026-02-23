@@ -381,9 +381,27 @@ class TransformationPipeline:
 
         p = self.cfg.get("pipeline", {}) or {}
         raw_input = p.get("input_root", "data/processed/current")
-        self.input_root = self._resolve_input_root(raw_input)
-        self._setup_logging()
+        if Path(raw_input).is_absolute():
+            self.input_root = Path(raw_input).resolve()
+        else:
+            # Resolve relative to config_path's parent's parent (standard sibling structure)
+            candidate = (self.config_path.parent.parent / raw_input).resolve()
 
+            # If not found and in a 'dags' folder (Composer-like), try one level above dags
+            if not candidate.exists() and "dags" in self.config_path.parts:
+                try:
+                    parts = list(self.config_path.parts)
+                    # Find the last occurrence of 'dags'
+                    dags_idx = len(parts) - 1 - parts[::-1].index("dags")
+                    root = Path(*parts[:dags_idx])
+                    if root.parts:  # ensure not empty
+                        alt_candidate = (root / raw_input).resolve()
+                        if alt_candidate.exists():
+                            candidate = alt_candidate
+                except (ValueError, IndexError):
+                    pass
+
+            self.input_root = candidate
         self.output_subdir = p.get("output_subdir", "transformed")
         self.resume = bool(p.get("resume", True))
         self.force_recompute = bool(p.get("force_recompute", False))
