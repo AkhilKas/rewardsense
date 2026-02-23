@@ -11,13 +11,20 @@ from .statistics import (
     TransactionStatistics,
     UserProfileStatistics,
 )
-from .visualizations import (
-    create_reward_distribution_plot,
-    create_spending_heatmap,
-    create_temporal_trend_plot,
-    generate_all_visualizations,
-)
 from .history import StatisticsHistory
+
+try:
+    from .visualizations import (
+        create_reward_distribution_plot,
+        create_spending_heatmap,
+        create_temporal_trend_plot,
+        generate_all_visualizations,
+    )
+except Exception:  # noqa: BLE001
+    create_reward_distribution_plot = None
+    create_spending_heatmap = None
+    create_temporal_trend_plot = None
+    generate_all_visualizations = None
 
 __all__ = [
     "DataProfiler",

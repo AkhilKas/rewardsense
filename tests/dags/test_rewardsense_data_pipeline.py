@@ -154,6 +154,8 @@ class TestTaskExistence:
         "reporting.generate_pipeline_report",
         "reporting.log_pipeline_metrics",
         "reporting.send_pipeline_alerts",
+        "reporting.generate_performance_dashboard",
+        "reporting.check_performance_regression",
     ]
 
     def test_all_expected_tasks_present(self, pipeline_dag):
@@ -198,12 +200,12 @@ class TestTaskGroups:
         ]
         assert len(versioning_tasks) == 4
 
-    def test_reporting_group_has_three_tasks(self, pipeline_dag):
-        """Reporting group should contain 3 tasks (report, metrics, alerts)."""
+    def test_reporting_group_has_five_tasks(self, pipeline_dag):
+        """Reporting group should contain 5 tasks (report, alerts, metrics, perf)."""
         reporting_tasks = [
             t for t in pipeline_dag.tasks if t.task_id.startswith("reporting.")
         ]
-        assert len(reporting_tasks) == 3
+        assert len(reporting_tasks) == 5
 
 
 # =============================================================================
@@ -289,8 +291,8 @@ class TestDependencies:
         )
         assert len(report_upstream) > 0
 
-    def test_metrics_and_alerts_follow_report(self, pipeline_dag):
-        """log_pipeline_metrics and send_pipeline_alerts depend on report."""
+    def test_reporting_dependencies(self, pipeline_dag):
+        """Report fans out to alerts/metrics, then performance chain follows metrics."""
         metrics_upstream = self._get_upstream_ids(
             pipeline_dag, "reporting.log_pipeline_metrics"
         )
@@ -300,6 +302,16 @@ class TestDependencies:
             pipeline_dag, "reporting.send_pipeline_alerts"
         )
         assert "reporting.generate_pipeline_report" in alerts_upstream
+
+        dashboard_upstream = self._get_upstream_ids(
+            pipeline_dag, "reporting.generate_performance_dashboard"
+        )
+        assert "reporting.log_pipeline_metrics" in dashboard_upstream
+
+        regression_upstream = self._get_upstream_ids(
+            pipeline_dag, "reporting.check_performance_regression"
+        )
+        assert "reporting.generate_performance_dashboard" in regression_upstream
 
     def test_pipeline_end_is_terminal(self, pipeline_dag):
         """pipeline_end should have no downstream tasks."""

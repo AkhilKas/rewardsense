@@ -78,7 +78,6 @@ with DAG(
     catchup=False,
     tags=["setup", "validation", "rewardsense"],
 ) as dag:
-
     t1_echo = BashOperator(
         task_id="echo_environment",
         bash_command=(

@@ -5,14 +5,66 @@ Generates comprehensive data quality reports for all datasets.
 """
 
 import pandas as pd
-from ydata_profiling import ProfileReport
 from pathlib import Path
 import logging
-from typing import Optional, Dict
+from typing import Any, Optional, Dict, Union
 from datetime import datetime
 import json
 
 logger = logging.getLogger(__name__)
+
+try:
+    from ydata_profiling import ProfileReport as YDataProfileReport
+except Exception as exc:  # noqa: BLE001
+    YDataProfileReport = None
+    logger.warning(
+        "ydata_profiling unavailable, falling back to lightweight profiler: %s", exc
+    )
+
+
+class _FallbackProfileReport:
+    """Minimal fallback profile object when ydata_profiling is unavailable."""
+
+    def __init__(self, df: pd.DataFrame, title: str = "Data Profile") -> None:
+        self.df = df
+        self.title = title
+
+    def get_description(self) -> dict[str, Any]:
+        numeric_summary = self.df.describe(include="all")
+        missing = self.df.isna().sum().to_dict()
+        return {
+            "title": self.title,
+            "n_rows": int(len(self.df)),
+            "n_columns": int(len(self.df.columns)),
+            "columns": [str(c) for c in self.df.columns],
+            "missing": missing,
+            "summary": numeric_summary.replace({pd.NA: None}).to_dict(),
+        }
+
+    def to_file(self, output_path: Union[Path, str]) -> None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        desc = self.get_description()
+        rows_html = "".join(
+            f"<tr><td>{k}</td><td>{v}</td></tr>"
+            for k, v in {
+                "Rows": desc["n_rows"],
+                "Columns": desc["n_columns"],
+                "Column names": ", ".join(desc["columns"]),
+            }.items()
+        )
+        html = (
+            "<html><head><meta charset='utf-8'><title>{title}</title></head>"
+            "<body><h1>{title}</h1><table border='1'>{rows}</table></body></html>"
+        ).format(title=self.title, rows=rows_html)
+        output_path.write_text(html, encoding="utf-8")
+
+
+def _build_profile_report(df: pd.DataFrame, **config: Any) -> Any:
+    if YDataProfileReport is not None:
+        return YDataProfileReport(df, **config)
+    title = str(config.get("title", "Data Profile"))
+    return _FallbackProfileReport(df, title=title)
 
 
 class DataProfiler:
@@ -43,7 +95,7 @@ class DataProfiler:
         df: pd.DataFrame,
         title: str = "Transaction Data Profile",
         minimal: bool = False,
-    ) -> ProfileReport:
+    ) -> Any:
         """
         Generate profile report for transaction data.
 
@@ -69,7 +121,7 @@ class DataProfiler:
             },
         }
 
-        profile = ProfileReport(df, **config)
+        profile = _build_profile_report(df, **config)
 
         # Save HTML report
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -89,7 +141,7 @@ class DataProfiler:
         df: pd.DataFrame,
         title: str = "User Profile Data Profile",
         minimal: bool = False,
-    ) -> ProfileReport:
+    ) -> Any:
         """
         Generate profile report for user profile data.
 
@@ -111,7 +163,7 @@ class DataProfiler:
             },
         }
 
-        profile = ProfileReport(df, **config)
+        profile = _build_profile_report(df, **config)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = self.output_dir / f"user_profiles_profile_{timestamp}.html"
@@ -129,7 +181,7 @@ class DataProfiler:
         df: pd.DataFrame,
         title: str = "Credit Card Data Profile",
         minimal: bool = False,
-    ) -> ProfileReport:
+    ) -> Any:
         """
         Generate profile report for credit card data.
 
@@ -148,7 +200,7 @@ class DataProfiler:
             "minimal": minimal,
         }
 
-        profile = ProfileReport(df, **config)
+        profile = _build_profile_report(df, **config)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = self.output_dir / f"credit_cards_profile_{timestamp}.html"
@@ -167,7 +219,7 @@ class DataProfiler:
         users_df: Optional[pd.DataFrame] = None,
         cards_df: Optional[pd.DataFrame] = None,
         minimal: bool = False,
-    ) -> Dict[str, ProfileReport]:
+    ) -> Dict[str, Any]:
         """
         Generate profiles for all datasets.
 
@@ -205,7 +257,7 @@ def generate_profile_report(
     title: str = "Data Profile",
     output_path: Optional[Path] = None,
     minimal: bool = False,
-) -> ProfileReport:
+) -> Any:
     """
     Generate a profile report for any DataFrame.
 
@@ -218,7 +270,7 @@ def generate_profile_report(
     Returns:
         ProfileReport object
     """
-    profile = ProfileReport(df, title=title, minimal=minimal)
+    profile = _build_profile_report(df, title=title, minimal=minimal)
 
     if output_path:
         output_path = Path(output_path)

@@ -421,7 +421,6 @@ class TestNormalizerReproducibility:
 
 
 class TestDatasetNormConfig:
-
     def test_from_dict(self):
         d = {
             "standard_scale": ["a", "b"],
@@ -457,7 +456,6 @@ class TestDatasetNormConfig:
 
 
 class TestNormalizeAllFeatures:
-
     def test_normalizes_all_three_datasets(self, mixed_df, numeric_df):
         users_df = pd.DataFrame(
             {
@@ -521,7 +519,6 @@ class TestNormalizeAllFeatures:
 
 
 class TestEdgeCases:
-
     def test_empty_dataframe(self):
         df = pd.DataFrame({"val": pd.Series(dtype=float), "cat": pd.Series(dtype=str)})
         cfg = DatasetNormConfig(standard_scale=["val"], label_encode=["cat"])

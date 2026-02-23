@@ -12,6 +12,7 @@ from .callbacks import (
     on_task_success_callback,
 )
 from .metrics import PipelineMetricsLogger
+from .performance import PipelinePerformanceMonitor, timed_python_task
 from .pipeline_report import PipelineReportGenerator
 
 __all__ = [
@@ -20,6 +21,8 @@ __all__ = [
     "EmailAlerter",
     "AlertDispatcher",
     "PipelineMetricsLogger",
+    "PipelinePerformanceMonitor",
+    "timed_python_task",
     "on_task_failure_callback",
     "on_task_success_callback",
     "on_dag_success_callback",

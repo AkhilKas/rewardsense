@@ -3,7 +3,7 @@
 
 version: 1
 pipeline:
-  input_root: data/processed/current
+  input_root: /home/airflow/gcsfuse/actual_mount_path/data/processed/current
   output_subdir: transformed
   resume: true
   force_recompute: false

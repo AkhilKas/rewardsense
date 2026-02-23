@@ -344,7 +344,6 @@ class TestTransactionDistributions:
 
 
 class TestTransactionReproducibility:
-
     def test_same_seed_same_transactions(self, small_profiles):
         g1 = TransactionGenerator(seed=42, start_date=datetime(2024, 1, 1))
         g2 = TransactionGenerator(seed=42, start_date=datetime(2024, 1, 1))
@@ -366,7 +365,6 @@ class TestTransactionReproducibility:
 
 
 class TestEdgeCases:
-
     def test_single_user(self):
         gen = UserProfileGenerator(num_users=1, seed=42)
         df = gen.generate()

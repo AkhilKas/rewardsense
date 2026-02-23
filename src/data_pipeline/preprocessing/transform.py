@@ -439,14 +439,32 @@ class TransformationPipeline:
         logger.info("Output root: %s", self.output_root)
 
     def _resolve_input_root(self, raw_input: str) -> Path:
+        composer_root = Path("/home/airflow/gcs/data/processed/current")
+        if composer_root.exists():
+            return composer_root.resolve()
+
         candidate = Path(raw_input).expanduser()
         relative_candidate = candidate
+        expected_inputs = [
+            "offers/creditcardbonuses_offers.json",
+            "synthetic/transactions.csv",
+            "synthetic/user_profiles.csv",
+        ]
+
+        def _input_score(root: Path) -> int:
+            return sum(int((root / rel).exists()) for rel in expected_inputs)
 
         if candidate.is_absolute():
             # Respect valid absolute paths, but don't trust placeholder paths
             # from config in Composer (e.g. stale gcsfuse examples).
             if candidate.exists():
-                return candidate.resolve()
+                score = _input_score(candidate)
+                if score > 0:
+                    return candidate.resolve()
+                logger.warning(
+                    "Configured absolute input_root exists but looks empty: %s. Searching alternatives.",
+                    candidate,
+                )
 
             marker = ("data", "processed", "current")
             parts = candidate.parts
@@ -479,16 +497,6 @@ class TransformationPipeline:
         existing_candidates = [path for path in preferred_candidates if path.exists()]
         if existing_candidates:
             # Prefer the existing path that actually contains expected inputs.
-            expected_inputs = [
-                "manifest_latest.json",
-                "offers/creditcardbonuses_offers.json",
-                "synthetic/transactions.csv",
-                "synthetic/user_profiles.csv",
-            ]
-
-            def _input_score(root: Path) -> int:
-                return sum(int((root / rel).exists()) for rel in expected_inputs)
-
             best = max(existing_candidates, key=_input_score)
             if _input_score(best) > 0:
                 return best

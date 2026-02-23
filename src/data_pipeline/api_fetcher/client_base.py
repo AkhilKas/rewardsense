@@ -47,7 +47,6 @@ class BaseAPIClient:
         retries: Optional[int] = None,
         backoff_factor: Optional[float] = None,
     ) -> None:
-
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout or self.DEFAULT_TIMEOUT
 

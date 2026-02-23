@@ -29,6 +29,9 @@ Notes:
 
 import sys
 import os
+import json
+import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -37,6 +40,12 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
+
+from data_pipeline.monitoring.performance import (
+    PipelinePerformanceMonitor,
+    timed_python_task,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -48,9 +57,42 @@ for _p in (str(REPO_ROOT), str(SRC_ROOT)):
 def get_data_root() -> Path:
     """Return stable data root for Composer or local runs."""
     if Path("/home/airflow/gcs").exists():
-        # Composer persists data under /home/airflow/gcs/data (bucket root mount).
+        # Composer persisted data path (bucket root mount).
         return Path("/home/airflow/gcs/data/processed/current")
     return REPO_ROOT / "data" / "processed" / "current"
+
+
+def _write_csv_chunked(df, output_path: Path, chunk_size: int) -> None:
+    """Write a DataFrame in chunks to reduce peak memory pressure."""
+    total_rows = len(df)
+    if total_rows == 0:
+        df.to_csv(output_path, index=False)
+        return
+    for start in range(0, total_rows, chunk_size):
+        stop = min(start + chunk_size, total_rows)
+        mode = "w" if start == 0 else "a"
+        header = start == 0
+        df.iloc[start:stop].to_csv(output_path, mode=mode, header=header, index=False)
+
+
+def _is_synthetic_cache_valid(
+    meta_path: Path, users_path: Path, txns_path: Path
+) -> bool:
+    """Check whether synthetic outputs can be reused for this run."""
+    if not (meta_path.exists() and users_path.exists() and txns_path.exists()):
+        return False
+    try:
+        payload = json.loads(meta_path.read_text())
+    except Exception:  # noqa: BLE001
+        return False
+
+    expected_users = int(os.getenv("SYNTHETIC_USER_COUNT", "100"))
+    expected_seed = int(os.getenv("SYNTHETIC_SEED", "42"))
+    return (
+        payload.get("num_users") == expected_users
+        and payload.get("seed") == expected_seed
+        and payload.get("status") == "success"
+    )
 
 
 def _resolve_transform_config_path() -> Path:
@@ -144,6 +186,13 @@ def _on_task_failure(context):
     on_task_failure_callback(context)
 
 
+def _on_task_success(context):
+    """Log task-level success timing for all operators."""
+    from data_pipeline.monitoring.callbacks import on_task_success_callback
+
+    on_task_success_callback(context)
+
+
 def _on_dag_success(context):
     """Send a summary alert when the full DAG succeeds."""
     from data_pipeline.monitoring.callbacks import on_dag_success_callback
@@ -165,6 +214,7 @@ default_args = {
     "execution_timeout": timedelta(hours=4),
     "sla": timedelta(hours=3),
     "on_failure_callback": _on_task_failure,
+    "on_success_callback": _on_task_success,
 }
 
 
@@ -176,6 +226,7 @@ default_args = {
 # =============================================================================
 
 
+@timed_python_task("ingestion.scrape_nerdwallet")
 def _scrape_nerdwallet(**context):
     """Scrape credit card data from NerdWallet."""
     import logging
@@ -210,6 +261,7 @@ def _scrape_nerdwallet(**context):
         raise
 
 
+@timed_python_task("ingestion.scrape_issuers")
 def _scrape_issuers(**context):
     """Scrape credit card data from issuer websites."""
     import logging
@@ -222,17 +274,22 @@ def _scrape_issuers(**context):
     total_cards = 0
     scrapers = [ChaseScraper(), AmexScraper()]
 
-    for scraper in scrapers:
-        try:
-            cards = scraper.scrape_all_cards()
+    # Run issuer scrapers concurrently to reduce end-to-end ingestion latency.
+    with ThreadPoolExecutor(max_workers=min(4, len(scrapers))) as executor:
+        future_map = {
+            executor.submit(scraper.scrape_all_cards): scraper for scraper in scrapers
+        }
+        for future in as_completed(future_map):
+            scraper = future_map[future]
             source_name = scraper.get_source_name()
-            results[source_name] = len(cards)
-            total_cards += len(cards)
-            logger.info(f"Scraped {len(cards)} cards from {source_name}")
-        except Exception as e:
-            logger.error(f"Failed to scrape {scraper.get_source_name()}: {e}")
-            # Continue to next issuer even if one fails
-            continue
+            try:
+                cards = future.result()
+                results[source_name] = len(cards)
+                total_cards += len(cards)
+                logger.info(f"Scraped {len(cards)} cards from {source_name}")
+            except Exception as e:
+                logger.error(f"Failed to scrape {source_name}: {e}")
+                continue
 
     # Save to GCS if we found anything
     if total_cards > 0:
@@ -256,6 +313,7 @@ def _scrape_issuers(**context):
     }
 
 
+@timed_python_task("ingestion.fetch_api_data")
 def _fetch_api_data(**context):
     """Fetch credit card data from the CreditCardBonuses API."""
     import logging
@@ -304,6 +362,7 @@ def _fetch_api_data(**context):
         raise
 
 
+@timed_python_task("ingestion.generate_synthetic_data")
 def _generate_synthetic_data(**context):
     """Generate synthetic user profiles and transaction data."""
     import logging
@@ -314,21 +373,10 @@ def _generate_synthetic_data(**context):
     logger.info("🏭 Generating synthetic user & transaction data...")
 
     try:
-        import gc
+        user_count = int(os.getenv("SYNTHETIC_USER_COUNT", "100"))
+        seed = int(os.getenv("SYNTHETIC_SEED", "42"))
+        chunk_size = int(os.getenv("SYNTHETIC_TXN_CHUNK_SIZE", "25000"))
 
-        # Reduce count to 100 to stay within worker memory limits for this story
-        user_gen = UserProfileGenerator(num_users=100, seed=42)
-        users = user_gen.generate()
-        logger.info(f"Generated {len(users)} synthetic users.")
-
-        # Clean up UserProfileGenerator overhead before large transaction gen
-        gc.collect()
-
-        txn_gen = TransactionGenerator(seed=42)
-        transactions = txn_gen.generate(users)
-        logger.info(f"Generated {len(transactions)} synthetic transactions.")
-
-        # Save to GCS (matches transform.yaml expected paths)
         output_dir = get_data_root() / "synthetic"
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Writing to: {output_dir}")
@@ -336,9 +384,45 @@ def _generate_synthetic_data(**context):
 
         user_path = output_dir / "user_profiles.csv"
         txn_path = output_dir / "transactions.csv"
+        meta_path = output_dir / "synthetic_meta.json"
+
+        if _is_synthetic_cache_valid(meta_path, user_path, txn_path):
+            cache_meta = json.loads(meta_path.read_text())
+            logger.info("Using cached synthetic data from %s", output_dir)
+            return {
+                "users_generated": cache_meta.get("users_generated", 0),
+                "transactions_generated": cache_meta.get("transactions_generated", 0),
+                "status": "success",
+                "cache_hit": True,
+            }
+
+        user_gen = UserProfileGenerator(num_users=user_count, seed=seed)
+        users = user_gen.generate()
+        logger.info(f"Generated {len(users)} synthetic users.")
+
+        # Clean up UserProfileGenerator overhead before large transaction gen
+        gc.collect()
+
+        txn_gen = TransactionGenerator(seed=seed)
+        transactions = txn_gen.generate(users)
+        logger.info(f"Generated {len(transactions)} synthetic transactions.")
 
         users.to_csv(user_path, index=False)
-        transactions.to_csv(txn_path, index=False)
+        _write_csv_chunked(transactions, txn_path, chunk_size=chunk_size)
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "status": "success",
+                    "generated_at": datetime.utcnow().isoformat(),
+                    "num_users": user_count,
+                    "seed": seed,
+                    "chunk_size": chunk_size,
+                    "users_generated": int(len(users)),
+                    "transactions_generated": int(len(transactions)),
+                },
+                indent=2,
+            )
+        )
         logger.info(f"Saved synthetic data to {output_dir}")
 
         # Capture counts before clean up
@@ -354,12 +438,14 @@ def _generate_synthetic_data(**context):
             "users_generated": u_count,
             "transactions_generated": t_count,
             "status": "success",
+            "cache_hit": False,
         }
     except Exception as e:
         logger.error(f"Failed to generate synthetic data: {type(e).__name__}: {e}")
         raise
 
 
+@timed_python_task("ingestion.merge_card_data")
 def _merge_card_data(**context):
     """Merge and deduplicate card data from all ingestion sources."""
     import logging
@@ -410,6 +496,7 @@ def _merge_card_data(**context):
     }
 
 
+@timed_python_task("preprocessing.clean_data")
 def _clean_data(**context):
     """Run data cleaning on all datasets."""
     import logging
@@ -439,6 +526,7 @@ def _clean_data(**context):
         raise
 
 
+@timed_python_task("preprocessing.engineer_features")
 def _engineer_features(**context):
     """Run feature engineering on cleaned datasets."""
     import logging
@@ -485,6 +573,7 @@ def _engineer_features(**context):
     return {"status": "success", "report": features_report}
 
 
+@timed_python_task("preprocessing.run_transform_pipeline")
 def _run_transform_pipeline(**context):
     """Run the full transformation pipeline."""
     import logging
@@ -529,6 +618,7 @@ def _run_transform_pipeline(**context):
 # =============================================================================
 
 
+@timed_python_task("reporting.generate_pipeline_report")
 def _generate_pipeline_report(**context):
     """Generate a summary report of the pipeline run."""
     from data_pipeline.monitoring.pipeline_report import PipelineReportGenerator
@@ -537,6 +627,7 @@ def _generate_pipeline_report(**context):
     return generator.generate(context)
 
 
+@timed_python_task("reporting.log_pipeline_metrics")
 def _log_pipeline_metrics(**context):
     """Log timing, record counts, and error metrics for the pipeline run."""
     from data_pipeline.monitoring.metrics import PipelineMetricsLogger
@@ -545,6 +636,7 @@ def _log_pipeline_metrics(**context):
     return logger.log_metrics(context)
 
 
+@timed_python_task("reporting.send_pipeline_alerts")
 def _send_pipeline_alerts(**context):
     """Send end-of-pipeline alerts via configured channels."""
     import logging
@@ -580,6 +672,52 @@ def _send_pipeline_alerts(**context):
     return {"alerts_sent": results, "status": "completed"}
 
 
+@timed_python_task("reporting.generate_performance_dashboard")
+def _generate_performance_dashboard(**context):
+    """Build a performance dashboard with bottlenecks and task trends."""
+    monitor = PipelinePerformanceMonitor()
+    return monitor.generate_dashboard(context)
+
+
+@timed_python_task("reporting.check_performance_regression")
+def _check_performance_regression(**context):
+    """Detect performance regressions and emit warnings via alerting channels."""
+    import logging
+
+    from data_pipeline.monitoring.alerting import AlertDispatcher, Severity
+
+    log = logging.getLogger("airflow.task")
+    monitor = PipelinePerformanceMonitor()
+    result = monitor.detect_regression(context)
+
+    if not result.get("regression_detected"):
+        log.info("[PERF] No regressions detected for run %s", result.get("run_id"))
+        return {"status": "ok", **result}
+
+    task_rows = result.get("task_regressions", [])
+    bottleneck_line = (
+        ", ".join(
+            f"{row['task_id']} (+{round(row['regression_ratio'] * 100, 1)}%)"
+            for row in task_rows[:5]
+        )
+        or "none"
+    )
+    message = (
+        "Performance regression detected.\n"
+        f"DAG: {result.get('dag_id')}\n"
+        f"Run: {result.get('run_id')}\n"
+        f"Run regression ratio: {result.get('run_regression_ratio')}\n"
+        f"Task regressions: {bottleneck_line}"
+    )
+    dispatch = AlertDispatcher().dispatch(
+        message=message,
+        severity=Severity.WARNING,
+        subject=f"Performance regression: {result.get('dag_id')}",
+    )
+    log.warning("[PERF] Regression alert dispatched: %s", dispatch)
+    return {"status": "warning", "alerts_sent": dispatch, **result}
+
+
 # =============================================================================
 # DAG definition
 # =============================================================================
@@ -596,7 +734,6 @@ with DAG(
     tags=["rewardsense", "data-pipeline", "weekly"],
     on_success_callback=_on_dag_success,
 ) as dag:
-
     # ── Start sentinel ──────────────────────────────────────────────────
     pipeline_start = EmptyOperator(task_id="pipeline_start")
 
@@ -604,7 +741,6 @@ with DAG(
     with TaskGroup(
         "ingestion", tooltip="Data acquisition from all sources"
     ) as ingestion_group:
-
         scrape_nerdwallet = PythonOperator(
             task_id="scrape_nerdwallet",
             python_callable=_scrape_nerdwallet,
@@ -646,7 +782,6 @@ with DAG(
         "preprocessing",
         tooltip="Data cleaning, feature engineering, and transformation",
     ) as preprocessing_group:
-
         # Let's ensure the manifest file which signifies completion of ingestion is written
         from airflow.sensors.python import PythonSensor
 
@@ -687,7 +822,6 @@ with DAG(
     with TaskGroup(
         "versioning", tooltip="Data versioning with DVC"
     ) as versioning_group:
-
         version_raw_data = BashOperator(
             task_id="version_raw_data",
             bash_command=(
@@ -741,7 +875,6 @@ with DAG(
     with TaskGroup(
         "reporting", tooltip="Pipeline report, metrics, and alerting"
     ) as reporting_group:
-
         report = PythonOperator(
             task_id="generate_pipeline_report",
             python_callable=_generate_pipeline_report,
@@ -760,8 +893,22 @@ with DAG(
             doc_md="Dispatch end-of-pipeline alerts to Slack and/or Email.",
         )
 
-        # Report first, then metrics and alerts run in parallel
+        performance_dashboard = PythonOperator(
+            task_id="generate_performance_dashboard",
+            python_callable=_generate_performance_dashboard,
+            doc_md="Build performance dashboard with bottlenecks, trends, and Gantt spans.",
+        )
+
+        performance_regression = PythonOperator(
+            task_id="check_performance_regression",
+            python_callable=_check_performance_regression,
+            doc_md="Detect performance regressions against recent run history.",
+        )
+
+        # Report first, then metrics + alerts in parallel.
+        # Dashboard/regression analysis happens after metrics are persisted.
         report >> [metrics, alerts]
+        metrics >> performance_dashboard >> performance_regression
 
     # ── End sentinel ────────────────────────────────────────────────────
     pipeline_end = EmptyOperator(
