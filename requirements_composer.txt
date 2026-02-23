@@ -19,6 +19,11 @@ tqdm>=4.66.0
 faker>=22.0.0
 python-dateutil>=2.8.0
 
+# Pipeline dependencies used by validation/profiling/normalization modules
+scikit-learn>=1.3.0
+great-expectations>=1.0.0
+ydata-profiling>=4.9.0
+
 # CRITICAL FIX: Prevent DVC from overriding Airflow core dependencies
 celery==5.4.0
 kombu==5.3.7

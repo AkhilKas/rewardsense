@@ -1,17 +1,1 @@
-# dvc.yaml - DVC Pipeline Definition
-# This file defines the data pipeline stages
-
-stages:
-  # Example structure - to be implemented in Epic 2 & 3
-  # 
-  # download_data:
-  #   cmd: python scripts/download_data.py
-  #   outs:
-  #     - data/raw/
-  #
-  # preprocess:
-  #   cmd: python src/data_pipeline/preprocessing/transform.py
-  #   deps:
-  #     - data/raw/
-  #   outs:
-  #     - data/processed/
+stages: {}

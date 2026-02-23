@@ -28,6 +28,7 @@ Notes:
 """
 
 import sys
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -42,6 +43,25 @@ SRC_ROOT = REPO_ROOT / "src"
 for _p in (str(REPO_ROOT), str(SRC_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+
+def get_data_root() -> Path:
+    """Return stable data root for Composer or local runs."""
+    if Path("/home/airflow/gcs").exists():
+        # Composer persists data under /home/airflow/gcs/data (bucket root mount).
+        return Path("/home/airflow/gcs/data/processed/current")
+    return REPO_ROOT / "data" / "processed" / "current"
+
+
+def _resolve_transform_config_path() -> Path:
+    candidates = [
+        REPO_ROOT / "config" / "transform.yaml",
+        REPO_ROOT / "dags" / "config" / "transform.yaml",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 # =============================================================================
@@ -159,7 +179,6 @@ default_args = {
 def _scrape_nerdwallet(**context):
     """Scrape credit card data from NerdWallet."""
     import logging
-    import os
     from data_pipeline.scrapers.nerdwallet_scraper import NerdWalletScraper
 
     logger = logging.getLogger("airflow.task")
@@ -167,21 +186,24 @@ def _scrape_nerdwallet(**context):
 
     # Initialize scraper (using default categories for full coverage)
     scraper = NerdWalletScraper()
-    
+
     try:
         cards = scraper.scrape_all_cards()
         logger.info(f"Successfully scraped {len(cards)} cards from NerdWallet.")
-        
+
         # Save output to GCS processed directory
         import json
-        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+
+        output_dir = get_data_root() / "offers"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+        logger.info(f"Writing to: {output_dir}")
+        logger.info(f"Path exists after mkdir: {output_dir.exists()}")
+
         output_path = output_dir / "nerdwallet.json"
         with open(output_path, "w") as f:
             json.dump(cards, f, indent=2)
         logger.info(f"Saved NerdWallet output to {output_path}")
-        
+
         return {"source": "nerdwallet", "cards_found": len(cards), "status": "success"}
     except Exception as e:
         logger.error(f"Failed to scrape NerdWallet: {e}")
@@ -199,7 +221,7 @@ def _scrape_issuers(**context):
     results = {}
     total_cards = 0
     scrapers = [ChaseScraper(), AmexScraper()]
-    
+
     for scraper in scrapers:
         try:
             cards = scraper.scrape_all_cards()
@@ -215,11 +237,14 @@ def _scrape_issuers(**context):
     # Save to GCS if we found anything
     if total_cards > 0:
         import json
-        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+
+        output_dir = get_data_root() / "offers"
         output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Writing to: {output_dir}")
+        logger.info(f"Path exists after mkdir: {output_dir.exists()}")
         output_path = output_dir / "issuers.json"
         with open(output_path, "w") as f:
-            json.dump(results, f, indent=2) # simplified for now
+            json.dump(results, f, indent=2)  # simplified for now
         logger.info(f"Saved Issuers output to {output_path}")
 
     return {
@@ -243,22 +268,25 @@ def _fetch_api_data(**context):
         client = CreditCardBonusesClient()
         # Log mode for debugging
         logger.info(f"API Client mode: {client.mode}")
-        
+
         offers = client.fetch_normalized_offers()
         logger.info(f"Successfully fetched {len(offers)} offers from API.")
-        
+
         # Save output to GCS (matches transform.yaml expected path)
         import json
-        output_dir = REPO_ROOT / "data" / "processed" / "current" / "offers"
+
+        output_dir = get_data_root() / "offers"
         output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Writing to: {output_dir}")
+        logger.info(f"Path exists after mkdir: {output_dir.exists()}")
         output_path = output_dir / "creditcardbonuses_offers.json"
-        
+
         # Convert Pydantic models to dicts for JSON serialization
         offers_dict = [o.model_dump() for o in offers]
         with open(output_path, "w") as f:
             json.dump(offers_dict, f, indent=2)
         logger.info(f"Saved API output to {output_path}")
-        
+
         return {
             "source": "creditcardbonuses_api",
             "offers_found": len(offers),
@@ -268,57 +296,64 @@ def _fetch_api_data(**context):
         logger.error(f"Failed to fetch API data: {type(e).__name__}: {e}")
         # Log more details if it's an upstream error
         from data_pipeline.api_fetcher import CreditCardBonusesUpstreamError
+
         if isinstance(e, CreditCardBonusesUpstreamError):
-            logger.error("Context: This is an upstream error from the API/Export source.")
+            logger.error(
+                "Context: This is an upstream error from the API/Export source."
+            )
         raise
 
 
 def _generate_synthetic_data(**context):
     """Generate synthetic user profiles and transaction data."""
     import logging
-    from data_pipeline.generators import UserProfileGenerator, TransactionGenerator
+    from data_pipeline.generators.user_profile_generator import UserProfileGenerator
+    from data_pipeline.generators.transaction_generator import TransactionGenerator
 
     logger = logging.getLogger("airflow.task")
     logger.info("🏭 Generating synthetic user & transaction data...")
 
     try:
         import gc
+
         # Reduce count to 100 to stay within worker memory limits for this story
         user_gen = UserProfileGenerator(num_users=100, seed=42)
         users = user_gen.generate()
         logger.info(f"Generated {len(users)} synthetic users.")
-        
+
         # Clean up UserProfileGenerator overhead before large transaction gen
         gc.collect()
-        
+
         txn_gen = TransactionGenerator(seed=42)
         transactions = txn_gen.generate(users)
         logger.info(f"Generated {len(transactions)} synthetic transactions.")
-        
+
         # Save to GCS (matches transform.yaml expected paths)
-        output_dir = REPO_ROOT / "data" / "processed" / "current" / "synthetic"
+        output_dir = get_data_root() / "synthetic"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+        logger.info(f"Writing to: {output_dir}")
+        logger.info(f"Path exists after mkdir: {output_dir.exists()}")
+
         user_path = output_dir / "user_profiles.csv"
         txn_path = output_dir / "transactions.csv"
-        
+
         users.to_csv(user_path, index=False)
         transactions.to_csv(txn_path, index=False)
         logger.info(f"Saved synthetic data to {output_dir}")
-        
+
         # Capture counts before clean up
         u_count = len(users)
         t_count = len(transactions)
-        
+
         # Free memory immediately
         del transactions
         del users
         gc.collect()
-        
+
         return {
-            "users_generated": u_count, 
-            "transactions_generated": t_count, 
-            "status": "success"
+            "users_generated": u_count,
+            "transactions_generated": t_count,
+            "status": "success",
         }
     except Exception as e:
         logger.error(f"Failed to generate synthetic data: {type(e).__name__}: {e}")
@@ -331,60 +366,62 @@ def _merge_card_data(**context):
 
     logger = logging.getLogger("airflow.task")
     logger.info("🔀 Merging card data from all ingestion sources...")
-    
+
     # Extract metrics from upstream tasks using XCom
-    ti = context['ti']
-    nerdwallet_metrics = ti.xcom_pull(task_ids='ingestion.scrape_nerdwallet')
-    issuers_metrics = ti.xcom_pull(task_ids='ingestion.scrape_issuers')
-    api_metrics = ti.xcom_pull(task_ids='ingestion.fetch_api_data')
-    
+    ti = context["ti"]
+    nerdwallet_metrics = ti.xcom_pull(task_ids="ingestion.scrape_nerdwallet")
+    issuers_metrics = ti.xcom_pull(task_ids="ingestion.scrape_issuers")
+    api_metrics = ti.xcom_pull(task_ids="ingestion.fetch_api_data")
+
     nw_count = nerdwallet_metrics.get("cards_found", 0) if nerdwallet_metrics else 0
     issuer_count = issuers_metrics.get("total_cards", 0) if issuers_metrics else 0
     api_count = api_metrics.get("offers_found", 0) if api_metrics else 0
-    
+
     total_found = nw_count + issuer_count + api_count
-    
+
     # Story 5.2 implementation connects the scraper outputs to the prep layer
     # For now, we return the counts merged to confirm the pipeline execution logic flowed properly
-    logger.info(f"Merge metrics: NW={nw_count}, Issuers={issuer_count}, API={api_count}")
+    logger.info(
+        f"Merge metrics: NW={nw_count}, Issuers={issuer_count}, API={api_count}"
+    )
 
     # Write manifest file to signal ingestion completion to the preprocessing phase
     import json
-    manifest_path = REPO_ROOT / "data" / "processed" / "current" / "manifest_latest.json"
+
+    manifest_path = get_data_root() / "manifest_latest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    
+    logger.info(f"Writing manifest to: {manifest_path.parent}")
+    logger.info(f"Path exists after mkdir: {manifest_path.parent.exists()}")
+
     manifest = {
         "timestamp": datetime.now().isoformat(),
         "total_merged_cards": total_found,
-        "sources": {
-            "nerdwallet": nw_count,
-            "issuers": issuer_count,
-            "api": api_count
-        }
+        "sources": {"nerdwallet": nw_count, "issuers": issuer_count, "api": api_count},
     }
-    
+
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     logger.info(f"Manifest written to {manifest_path}")
 
-    return {"total_merged_cards": total_found, "duplicates_removed": 0, "status": "success"}
+    return {
+        "total_merged_cards": total_found,
+        "duplicates_removed": 0,
+        "status": "success",
+    }
 
 
 def _clean_data(**context):
     """Run data cleaning on all datasets."""
     import logging
     import traceback
+
     logger = logging.getLogger("airflow.task")
     logger.info("🎬 Starting _clean_data task...")
 
     try:
         from data_pipeline.preprocessing.transform import TransformationPipeline
-        
-        # Try standard project root first (local), then dags/ root (Composer)
-        config_path = REPO_ROOT / "config" / "transform.yaml"
-        if not config_path.exists():
-            config_path = REPO_ROOT / "dags" / "config" / "transform.yaml"
-        
+
+        config_path = _resolve_transform_config_path()
         logger.info(f"Using config at: {config_path}")
 
         # Run the load and clean steps of the transformation pipeline
@@ -410,7 +447,9 @@ def _engineer_features(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("⚙️ Engineering features for cards and transactions...")
 
-    pipeline = TransformationPipeline(config_path=REPO_ROOT / "config" / "transform.yaml")
+    config_path = _resolve_transform_config_path()
+    logger.info(f"Using config at: {config_path}")
+    pipeline = TransformationPipeline(config_path=config_path)
 
     # Instead of recalculating, we load the checkpoints from the previous step
     # if checkpoints are enabled and available or continue from step_clean
@@ -454,7 +493,9 @@ def _run_transform_pipeline(**context):
     logger = logging.getLogger("airflow.task")
     logger.info("🔄 Running TransformationPipeline write outputs...")
 
-    pipeline = TransformationPipeline(config_path=REPO_ROOT / "config" / "transform.yaml")
+    config_path = _resolve_transform_config_path()
+    logger.info(f"Using config at: {config_path}")
+    pipeline = TransformationPipeline(config_path=config_path)
 
     step_name_features = "03_features"
     ckpt_dir = pipeline._step_ckpt_dir(step_name_features)
@@ -608,12 +649,9 @@ with DAG(
 
         # Let's ensure the manifest file which signifies completion of ingestion is written
         from airflow.sensors.python import PythonSensor
-        import os
 
         def _check_manifest_exists():
-            manifest_path = (
-                REPO_ROOT / "data" / "processed" / "current" / "manifest_latest.json"
-            )
+            manifest_path = get_data_root() / "manifest_latest.json"
             return os.path.exists(manifest_path)
 
         check_raw_data_ready = PythonSensor(
@@ -652,28 +690,47 @@ with DAG(
 
         version_raw_data = BashOperator(
             task_id="version_raw_data",
-            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc add data/processed/current/synthetic data/processed/current/offers || true",
+            bash_command=(
+                "cd {{ var.value.get('repo_root', dag.folder) }} && "
+                "printf 'stages: {}\\n' > dvc.yaml && "
+                "dvc config core.no_scm true --local && "
+                "dvc add data/processed/current/synthetic data/processed/current/offers || true"
+            ),
             doc_md="Version raw ingestion data using DVC.",
         )
 
         version_processed_data = BashOperator(
             task_id="version_processed_data",
-            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc add data/processed/current/transformed || true",
+            bash_command=(
+                "cd {{ var.value.get('repo_root', dag.folder) }} && "
+                "printf 'stages: {}\\n' > dvc.yaml && "
+                "dvc config core.no_scm true --local && "
+                "dvc add data/processed/current/transformed || true"
+            ),
             doc_md="Version transformed and feature-engineered data using DVC.",
         )
 
         push_to_remote = BashOperator(
             task_id="push_to_remote",
-            bash_command="cd {{ var.value.get('repo_root', '/opt/airflow') }} && dvc push",
+            bash_command=(
+                "cd {{ var.value.get('repo_root', dag.folder) }} && "
+                "printf 'stages: {}\\n' > dvc.yaml && "
+                "dvc config core.no_scm true --local && "
+                "dvc push"
+            ),
             doc_md="Push DVC tracked files to the configured Google Cloud Storage remote.",
         )
 
         commit_dvc_files = BashOperator(
             task_id="commit_dvc_files",
             bash_command=(
-                "cd {{ var.value.get('repo_root', '/opt/airflow') }} && "
+                "cd {{ var.value.get('repo_root', dag.folder) }} && "
+                "if [ -d .git ]; then "
                 "git add data/processed/current/*.dvc dvc.lock .gitignore && "
-                "git diff-index --quiet HEAD || git commit -m 'chore(data): auto-update DVC tracking files [skip ci]'"
+                "git diff-index --quiet HEAD || git commit -m 'chore(data): auto-update DVC tracking files [skip ci]'; "
+                "else "
+                "echo 'No .git directory in Composer DAGs mount; skipping commit step.'; "
+                "fi"
             ),
             doc_md="Commit updated DVC tracking files to Git to maintain version history.",
         )

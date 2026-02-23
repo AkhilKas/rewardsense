@@ -376,33 +376,14 @@ class TransformationPipeline:
     """
 
     def __init__(self, config_path: Path):
-        self.config_path = config_path
-        self.cfg = load_yaml_config(config_path)
-        self._setup_logging()
+        self.config_path = Path(config_path).resolve()
+        self.cfg = load_yaml_config(self.config_path)
 
         p = self.cfg.get("pipeline", {}) or {}
         raw_input = p.get("input_root", "data/processed/current")
-        if Path(raw_input).is_absolute():
-            self.input_root = Path(raw_input).resolve()
-        else:
-            # Resolve relative to config_path's parent's parent (standard sibling structure)
-            candidate = (self.config_path.parent.parent / raw_input).resolve()
-            
-            # If not found and in a 'dags' folder (Composer-like), try one level above dags
-            if not candidate.exists() and "dags" in self.config_path.parts:
-                try:
-                    parts = list(self.config_path.parts)
-                    # Find the last occurrence of 'dags'
-                    dags_idx = len(parts) - 1 - parts[::-1].index("dags")
-                    root = Path(*parts[:dags_idx])
-                    if root.parts: # ensure not empty
-                         alt_candidate = (root / raw_input).resolve()
-                         if alt_candidate.exists():
-                             candidate = alt_candidate
-                except (ValueError, IndexError):
-                    pass
-            
-            self.input_root = candidate
+        self.input_root = self._resolve_input_root(raw_input)
+        self._setup_logging()
+
         self.output_subdir = p.get("output_subdir", "transformed")
         self.resume = bool(p.get("resume", True))
         self.force_recompute = bool(p.get("force_recompute", False))
@@ -438,6 +419,66 @@ class TransformationPipeline:
         logger.info("TransformationPipeline initialized")
         logger.info("Input root : %s", self.input_root)
         logger.info("Output root: %s", self.output_root)
+
+    def _resolve_input_root(self, raw_input: str) -> Path:
+        candidate = Path(raw_input).expanduser()
+        relative_candidate = candidate
+
+        if candidate.is_absolute():
+            # Respect valid absolute paths, but don't trust placeholder paths
+            # from config in Composer (e.g. stale gcsfuse examples).
+            if candidate.exists():
+                return candidate.resolve()
+
+            marker = ("data", "processed", "current")
+            parts = candidate.parts
+            marker_idx = -1
+            for i in range(len(parts) - len(marker) + 1):
+                if tuple(parts[i : i + len(marker)]) == marker:
+                    marker_idx = i
+                    break
+            if marker_idx >= 0:
+                relative_candidate = Path(*parts[marker_idx:])
+            else:
+                relative_candidate = Path("data/processed/current")
+            logger.warning(
+                "Configured absolute input_root does not exist: %s. Falling back using %s",
+                candidate,
+                relative_candidate,
+            )
+
+        # Prefer existing locations in this order:
+        # 1) Composer GCS root (/home/airflow/gcs/data/...)
+        # 2) Relative to the config's repo root assumption (<root>/config/transform.yaml)
+        # 3) Relative to the config directory (<root>/dags/config/transform.yaml in Composer)
+        # 4) Relative to current working directory (CLI fallback)
+        preferred_candidates = [
+            (Path("/home/airflow/gcs") / relative_candidate).resolve(),
+            (self.config_path.parent.parent / relative_candidate).resolve(),
+            (self.config_path.parent / relative_candidate).resolve(),
+            (Path.cwd() / relative_candidate).resolve(),
+        ]
+        existing_candidates = [path for path in preferred_candidates if path.exists()]
+        if existing_candidates:
+            # Prefer the existing path that actually contains expected inputs.
+            expected_inputs = [
+                "manifest_latest.json",
+                "offers/creditcardbonuses_offers.json",
+                "synthetic/transactions.csv",
+                "synthetic/user_profiles.csv",
+            ]
+
+            def _input_score(root: Path) -> int:
+                return sum(int((root / rel).exists()) for rel in expected_inputs)
+
+            best = max(existing_candidates, key=_input_score)
+            if _input_score(best) > 0:
+                return best
+            return existing_candidates[0]
+
+        # If none exist yet, return the first deterministic location so downstream
+        # writers (logs/checkpoints) still go to a stable path.
+        return preferred_candidates[0]
 
     # -------------------------------------------------------------------------
     # Logging
@@ -531,7 +572,19 @@ class TransformationPipeline:
             )
             if offers_file.exists():
                 payload = safe_read_json(offers_file)
-                offers = payload.get("offers", [])
+                # Support both payload shapes:
+                # 1) {"offers": [...]} and 2) direct list [...]
+                if isinstance(payload, dict):
+                    offers = payload.get("offers", [])
+                elif isinstance(payload, list):
+                    offers = payload
+                else:
+                    logger.warning(
+                        "Unexpected offers payload type in %s: %s",
+                        offers_file,
+                        type(payload).__name__,
+                    )
+                    offers = []
                 if ds.get("flatten_api_offers", True):
                     cards_df = pd.json_normalize(offers)
                 else:
