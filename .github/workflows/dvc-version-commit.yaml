@@ -47,13 +47,11 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore(data): auto-update DVC tracking files
-
-Run ID: ${RUN_ID}
-Timestamp: ${TIMESTAMP}
-Triggered by: ${{ github.event_name }}
-
-[skip ci]"
+            git commit \
+              -m "chore(data): auto-update DVC tracking files [skip ci]" \
+              -m "Run ID: ${RUN_ID}" \
+              -m "Timestamp: ${TIMESTAMP}" \
+              -m "Triggered by: ${{ github.event_name }}"
             git push
             echo "Committed and pushed DVC tracking updates"
           fi
