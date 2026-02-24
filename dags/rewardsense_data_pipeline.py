@@ -97,6 +97,8 @@ def _is_synthetic_cache_valid(
 
 def _resolve_transform_config_path() -> Path:
     candidates = [
+        REPO_ROOT / "config" / "transform_config.yaml",
+        REPO_ROOT / "dags" / "config" / "transform_config.yaml",
         REPO_ROOT / "config" / "transform.yaml",
         REPO_ROOT / "dags" / "config" / "transform.yaml",
     ]
@@ -268,11 +270,26 @@ def _scrape_issuers(**context):
     from data_pipeline.scrapers.issuer_scrapers import ChaseScraper, AmexScraper
 
     logger = logging.getLogger("airflow.task")
-    logger.info("🔍 Scraping issuers (Chase, Amex)...")
+    logger.info("🔍 Scraping issuer sites...")
 
     results = {}
+    all_cards = []
     total_cards = 0
-    scrapers = [ChaseScraper(), AmexScraper()]
+    skipped_scrapers = []
+
+    # Cloud Composer workers do not provide a stable Chrome runtime for Selenium.
+    # Run Selenium scrapers only in non-Composer environments.
+    is_composer = os.path.exists("/home/airflow/gcs")
+
+    scrapers = [ChaseScraper()]
+    if is_composer:
+        skipped_scrapers.append("American Express (Selenium disabled on Composer)")
+        logger.warning(
+            "Skipping AmexScraper in Composer environment "
+            "(Selenium/Chrome not available)."
+        )
+    else:
+        scrapers.append(AmexScraper())
 
     # Run issuer scrapers concurrently to reduce end-to-end ingestion latency.
     with ThreadPoolExecutor(max_workers=min(4, len(scrapers))) as executor:
@@ -286,6 +303,14 @@ def _scrape_issuers(**context):
                 cards = future.result()
                 results[source_name] = len(cards)
                 total_cards += len(cards)
+                for card in cards:
+                    if not isinstance(card, dict):
+                        continue
+                    enriched = dict(card)
+                    # Preserve origin for downstream traceability.
+                    enriched.setdefault("source", source_name)
+                    enriched["issuer_source"] = source_name
+                    all_cards.append(enriched)
                 logger.info(f"Scraped {len(cards)} cards from {source_name}")
             except Exception as e:
                 logger.error(f"Failed to scrape {source_name}: {e}")
@@ -301,14 +326,16 @@ def _scrape_issuers(**context):
         logger.info(f"Path exists after mkdir: {output_dir.exists()}")
         output_path = output_dir / "issuers.json"
         with open(output_path, "w") as f:
-            json.dump(results, f, indent=2)  # simplified for now
+            json.dump(all_cards, f, indent=2)
         logger.info(f"Saved Issuers output to {output_path}")
 
     return {
         "source": "issuers",
         "issuers_scraped": list(results.keys()),
         "total_cards": total_cards,
-        "results": results,
+        "issuer_counts": results,
+        "cards_written": len(all_cards),
+        "skipped_scrapers": skipped_scrapers,
         "status": "success",
     }
 
@@ -452,37 +479,90 @@ def _merge_card_data(**context):
 
     logger = logging.getLogger("airflow.task")
     logger.info("🔀 Merging card data from all ingestion sources...")
+    data_root = get_data_root()
+    offers_dir = data_root / "offers"
+    offers_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract metrics from upstream tasks using XCom
-    ti = context["ti"]
-    nerdwallet_metrics = ti.xcom_pull(task_ids="ingestion.scrape_nerdwallet")
-    issuers_metrics = ti.xcom_pull(task_ids="ingestion.scrape_issuers")
-    api_metrics = ti.xcom_pull(task_ids="ingestion.fetch_api_data")
+    def _load_cards(path: Path, source_name: str) -> list[dict]:
+        if not path.exists():
+            logger.warning("Source file missing for merge: %s", path)
+            return []
+        payload = json.loads(path.read_text())
+        if isinstance(payload, dict):
+            payload = payload.get("offers", [])
+        if not isinstance(payload, list):
+            logger.warning(
+                "Unexpected payload shape in %s (%s). Skipping.",
+                path,
+                type(payload).__name__,
+            )
+            return []
 
-    nw_count = nerdwallet_metrics.get("cards_found", 0) if nerdwallet_metrics else 0
-    issuer_count = issuers_metrics.get("total_cards", 0) if issuers_metrics else 0
-    api_count = api_metrics.get("offers_found", 0) if api_metrics else 0
+        cards = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            enriched = dict(item)
+            enriched.setdefault("source", source_name)
+            cards.append(enriched)
+        return cards
 
-    total_found = nw_count + issuer_count + api_count
-
-    # Story 5.2 implementation connects the scraper outputs to the prep layer
-    # For now, we return the counts merged to confirm the pipeline execution logic flowed properly
-    logger.info(
-        f"Merge metrics: NW={nw_count}, Issuers={issuer_count}, API={api_count}"
+    nerdwallet_cards = _load_cards(offers_dir / "nerdwallet.json", "nerdwallet")
+    issuer_cards = _load_cards(offers_dir / "issuers.json", "issuers")
+    api_cards = _load_cards(
+        offers_dir / "creditcardbonuses_offers.json", "creditcardbonuses_api"
     )
 
-    # Write manifest file to signal ingestion completion to the preprocessing phase
-    import json
+    def _norm(value):
+        return " ".join(str(value or "").strip().lower().split())
 
-    manifest_path = get_data_root() / "manifest_latest.json"
+    def _dedupe_key(card: dict) -> tuple[str, str]:
+        card_name = card.get("name") or card.get("card_name") or card.get("title") or ""
+        issuer = (
+            card.get("issuer")
+            or card.get("issuer_name")
+            or card.get("source")
+            or card.get("issuer_source")
+            or ""
+        )
+        return (_norm(card_name), _norm(issuer))
+
+    merged_cards = []
+    seen_keys = set()
+    for card in nerdwallet_cards + issuer_cards + api_cards:
+        key = _dedupe_key(card)
+        if not key[0]:
+            # Keep cards missing a name, but avoid duplicate empty-name payloads.
+            key = (f"unnamed:{len(merged_cards)}", key[1])
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        merged_cards.append(card)
+
+    merged_path = offers_dir / "merged_cards.json"
+    merged_path.write_text(json.dumps(merged_cards, indent=2))
+    logger.info("Merged %s cards into %s", len(merged_cards), merged_path)
+
+    # Write manifest file to signal ingestion completion to the preprocessing phase
+    manifest_path = data_root / "manifest_latest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Writing manifest to: {manifest_path.parent}")
     logger.info(f"Path exists after mkdir: {manifest_path.parent.exists()}")
 
     manifest = {
         "timestamp": datetime.now().isoformat(),
-        "total_merged_cards": total_found,
-        "sources": {"nerdwallet": nw_count, "issuers": issuer_count, "api": api_count},
+        "total_merged_cards": len(merged_cards),
+        "sources": {
+            "nerdwallet": len(nerdwallet_cards),
+            "issuers": len(issuer_cards),
+            "api": len(api_cards),
+        },
+        "files": {
+            "nerdwallet": "offers/nerdwallet.json",
+            "issuers": "offers/issuers.json",
+            "api": "offers/creditcardbonuses_offers.json",
+            "merged_cards": "offers/merged_cards.json",
+        },
     }
 
     with open(manifest_path, "w") as f:
@@ -490,8 +570,12 @@ def _merge_card_data(**context):
     logger.info(f"Manifest written to {manifest_path}")
 
     return {
-        "total_merged_cards": total_found,
-        "duplicates_removed": 0,
+        "total_merged_cards": len(merged_cards),
+        "duplicates_removed": (
+            len(nerdwallet_cards) + len(issuer_cards) + len(api_cards)
+        )
+        - len(merged_cards),
+        "merged_file": "offers/merged_cards.json",
         "status": "success",
     }
 
@@ -718,6 +802,69 @@ def _check_performance_regression(**context):
     return {"status": "warning", "alerts_sent": dispatch, **result}
 
 
+@timed_python_task("versioning.trigger_github_dvc_commit")
+def _trigger_github_dvc_commit(**context):
+    """Trigger GitHub Actions workflow to commit DVC tracking files."""
+    import logging
+
+    import requests
+    from airflow.models import Variable
+
+    logger = logging.getLogger("airflow.task")
+    logger.info("🚀 Triggering GitHub Actions DVC commit workflow...")
+
+    github_token = os.getenv("GITHUB_TOKEN") or Variable.get(
+        "github_token", default_var=None
+    )
+    github_repo = os.getenv("GITHUB_REPO") or Variable.get(
+        "github_repo", default_var="avadharj/rewardsense"
+    )
+
+    if not github_token:
+        logger.warning("GITHUB_TOKEN not configured; skipping trigger.")
+        return {"status": "skipped", "reason": "GITHUB_TOKEN not configured"}
+
+    dag_run = context.get("dag_run")
+    run_id = str(dag_run.run_id) if dag_run else "unknown"
+
+    url = f"https://api.github.com/repos/{github_repo}/dispatches"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {github_token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {
+        "event_type": "dvc-commit",
+        "client_payload": {
+            "dag_run_id": run_id,
+            "triggered_at": datetime.utcnow().isoformat(),
+        },
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code == 204:
+            logger.info("GitHub dispatch accepted for %s", github_repo)
+            return {
+                "status": "triggered",
+                "dag_run_id": run_id,
+                "github_repo": github_repo,
+            }
+        logger.error("GitHub API error %s: %s", response.status_code, response.text)
+        return {
+            "status": "failed",
+            "error": f"HTTP {response.status_code}: {response.text}",
+            "github_repo": github_repo,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to trigger GitHub workflow: %s", exc)
+        return {
+            "status": "failed",
+            "error": str(exc),
+            "github_repo": github_repo,
+        }
+
+
 # =============================================================================
 # DAG definition
 # =============================================================================
@@ -785,17 +932,24 @@ with DAG(
         # Let's ensure the manifest file which signifies completion of ingestion is written
         from airflow.sensors.python import PythonSensor
 
-        def _check_manifest_exists():
-            manifest_path = get_data_root() / "manifest_latest.json"
-            return os.path.exists(manifest_path)
+        def _check_raw_data_ready():
+            """Verify all ingestion outputs exist before preprocessing."""
+            data_root = get_data_root()
+            required_files = [
+                data_root / "manifest_latest.json",
+                data_root / "synthetic" / "user_profiles.csv",
+                data_root / "synthetic" / "transactions.csv",
+                data_root / "offers" / "merged_cards.json",
+            ]
+            return all(path.exists() for path in required_files)
 
         check_raw_data_ready = PythonSensor(
             task_id="check_raw_data_ready",
-            python_callable=_check_manifest_exists,
+            python_callable=_check_raw_data_ready,
             poke_interval=60,
             timeout=60 * 30,  # 30 mins
             mode="reschedule",
-            doc_md="Wait for the data ingestion manifest file to appear before proceeding.",
+            doc_md="Wait for manifest, merged cards, and synthetic files before preprocessing.",
         )
 
         clean = PythonOperator(
@@ -828,7 +982,12 @@ with DAG(
                 "cd {{ var.value.get('repo_root', dag.folder) }} && "
                 "printf 'stages: {}\\n' > dvc.yaml && "
                 "dvc config core.no_scm true --local && "
-                "dvc add data/processed/current/synthetic data/processed/current/offers || true"
+                "if [ -d /home/airflow/gcs ]; then "
+                "  DATA_ROOT=/home/airflow/gcs/data/processed/current; "
+                "else "
+                "  DATA_ROOT=data/processed/current; "
+                "fi && "
+                "dvc add ${DATA_ROOT}/synthetic ${DATA_ROOT}/offers || true"
             ),
             doc_md="Version raw ingestion data using DVC.",
         )
@@ -839,7 +998,12 @@ with DAG(
                 "cd {{ var.value.get('repo_root', dag.folder) }} && "
                 "printf 'stages: {}\\n' > dvc.yaml && "
                 "dvc config core.no_scm true --local && "
-                "dvc add data/processed/current/transformed || true"
+                "if [ -d /home/airflow/gcs ]; then "
+                "  DATA_ROOT=/home/airflow/gcs/data/processed/current; "
+                "else "
+                "  DATA_ROOT=data/processed/current; "
+                "fi && "
+                "dvc add ${DATA_ROOT}/transformed || true"
             ),
             doc_md="Version transformed and feature-engineered data using DVC.",
         )
@@ -848,28 +1012,23 @@ with DAG(
             task_id="push_to_remote",
             bash_command=(
                 "cd {{ var.value.get('repo_root', dag.folder) }} && "
-                "printf 'stages: {}\\n' > dvc.yaml && "
-                "dvc config core.no_scm true --local && "
-                "dvc push"
+                "dvc push || echo 'DVC push completed or nothing to push'"
             ),
             doc_md="Push DVC tracked files to the configured Google Cloud Storage remote.",
         )
 
-        commit_dvc_files = BashOperator(
-            task_id="commit_dvc_files",
-            bash_command=(
-                "cd {{ var.value.get('repo_root', dag.folder) }} && "
-                "if [ -d .git ]; then "
-                "git add data/processed/current/*.dvc dvc.lock .gitignore && "
-                "git diff-index --quiet HEAD || git commit -m 'chore(data): auto-update DVC tracking files [skip ci]'; "
-                "else "
-                "echo 'No .git directory in Composer DAGs mount; skipping commit step.'; "
-                "fi"
-            ),
-            doc_md="Commit updated DVC tracking files to Git to maintain version history.",
+        trigger_dvc_commit = PythonOperator(
+            task_id="trigger_github_dvc_commit",
+            python_callable=_trigger_github_dvc_commit,
+            doc_md="Trigger GitHub Actions workflow to commit .dvc files to Git.",
         )
 
-        version_raw_data >> version_processed_data >> push_to_remote >> commit_dvc_files
+        (
+            version_raw_data
+            >> version_processed_data
+            >> push_to_remote
+            >> trigger_dvc_commit
+        )
 
     # ── Task Group: Reporting & Monitoring ──────────────────────────────
     with TaskGroup(

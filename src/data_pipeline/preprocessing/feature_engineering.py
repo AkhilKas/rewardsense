@@ -434,18 +434,30 @@ class CreditCardFeatureEngineer:
             if col not in df.columns:
                 df[col] = default
 
-        df["expected_annual_rewards"] = annual_spending * (
-            df["base_reward_rate"] / 100.0
-        )
+        # Scraped offers can carry numeric-like strings (e.g. "2.0", "2%").
+        # Coerce to numeric before arithmetic to keep mixed-source merges stable.
+        base_rate = pd.to_numeric(
+            df["base_reward_rate"]
+            .astype(str)
+            .str.replace(r"[^0-9.\-]", "", regex=True),
+            errors="coerce",
+        ).fillna(0.0)
+        effective_annual_fee = pd.to_numeric(
+            df["effective_annual_fee"], errors="coerce"
+        ).fillna(0.0)
+        effective_fee_year1 = pd.to_numeric(
+            df["effective_fee_year1"], errors="coerce"
+        ).fillna(0.0)
+        welcome_bonus_value = pd.to_numeric(
+            df["welcome_bonus_value_usd"], errors="coerce"
+        ).fillna(0.0)
 
-        df["net_value_annual"] = (
-            df["expected_annual_rewards"] - df["effective_annual_fee"]
-        )
+        df["expected_annual_rewards"] = annual_spending * (base_rate / 100.0)
+
+        df["net_value_annual"] = df["expected_annual_rewards"] - effective_annual_fee
 
         df["net_value_year1"] = (
-            df["expected_annual_rewards"]
-            - df["effective_fee_year1"]
-            + df["welcome_bonus_value_usd"]
+            df["expected_annual_rewards"] - effective_fee_year1 + welcome_bonus_value
         )
 
         df["value_per_dollar"] = df["net_value_annual"] / float(annual_spending)

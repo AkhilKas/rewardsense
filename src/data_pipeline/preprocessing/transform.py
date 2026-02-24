@@ -265,15 +265,13 @@ pipeline:
 datasets:
   credit_cards:
     enabled: true
-    # Sources to load. "api" reads creditcardbonuses_offers.json.
-    # Scraped issuer/nerdwallet files are optional and currently loaded
-    # as raw dicts; by default we DO NOT merge them into cards until Story 3.4+.
+    # Primary source reads the post-ingestion merged card file.
     load_api_offers: true
     load_issuer_offers: false
     load_nerdwallet_offers: false
 
-    # Which offer file to load for API offers
-    api_offers_file: offers/creditcardbonuses_offers.json
+    # Which offer file to load for credit card records
+    api_offers_file: offers/merged_cards.json
 
     # If true, attempt to flatten offers into a tabular DataFrame for cleaning/FE.
     # For CreditCardBonuses offers, this should be true.
@@ -381,27 +379,7 @@ class TransformationPipeline:
 
         p = self.cfg.get("pipeline", {}) or {}
         raw_input = p.get("input_root", "data/processed/current")
-        if Path(raw_input).is_absolute():
-            self.input_root = Path(raw_input).resolve()
-        else:
-            # Resolve relative to config_path's parent's parent (standard sibling structure)
-            candidate = (self.config_path.parent.parent / raw_input).resolve()
-
-            # If not found and in a 'dags' folder (Composer-like), try one level above dags
-            if not candidate.exists() and "dags" in self.config_path.parts:
-                try:
-                    parts = list(self.config_path.parts)
-                    # Find the last occurrence of 'dags'
-                    dags_idx = len(parts) - 1 - parts[::-1].index("dags")
-                    root = Path(*parts[:dags_idx])
-                    if root.parts:  # ensure not empty
-                        alt_candidate = (root / raw_input).resolve()
-                        if alt_candidate.exists():
-                            candidate = alt_candidate
-                except (ValueError, IndexError):
-                    pass
-
-            self.input_root = candidate
+        self.input_root = self._resolve_input_root(str(raw_input))
         self.output_subdir = p.get("output_subdir", "transformed")
         self.resume = bool(p.get("resume", True))
         self.force_recompute = bool(p.get("force_recompute", False))
@@ -446,6 +424,7 @@ class TransformationPipeline:
         candidate = Path(raw_input).expanduser()
         relative_candidate = candidate
         expected_inputs = [
+            "offers/merged_cards.json",
             "offers/creditcardbonuses_offers.json",
             "synthetic/transactions.csv",
             "synthetic/user_profiles.csv",
