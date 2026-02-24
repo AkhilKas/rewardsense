@@ -64,7 +64,6 @@ standalone_admin_password.txt
 infrastructure/airflow_dags/__pycache__/
 
 # DVC
-/dvc.lock
 /.dvc/tmp
 /.dvc/cache
 
@@ -74,6 +73,8 @@ infrastructure/airflow_dags/__pycache__/
 /data/interim/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/processed/current/
+!data/processed/current/*.dvc
 !data/interim/.gitkeep
 !data/data_card.md
 

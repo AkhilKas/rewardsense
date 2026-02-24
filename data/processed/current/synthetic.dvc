@@ -1,0 +1,6 @@
+outs:
+- md5: 51f158c53cc03b27c807b607f27da0db.dir
+  size: 11682255
+  nfiles: 4
+  hash: md5
+  path: synthetic
