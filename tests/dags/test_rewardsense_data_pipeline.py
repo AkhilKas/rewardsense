@@ -149,7 +149,7 @@ class TestTaskExistence:
         "versioning.version_raw_data",
         "versioning.version_processed_data",
         "versioning.push_to_remote",
-        "versioning.commit_dvc_files",
+        "versioning.trigger_github_dvc_commit",
         # Reporting group
         "reporting.generate_pipeline_report",
         "reporting.log_pipeline_metrics",
@@ -268,7 +268,7 @@ class TestDependencies:
         assert len(version_upstream) > 0
 
     def test_versioning_chain(self, pipeline_dag):
-        """version_raw_data -> version_processed_data -> push_to_remote -> commit_dvc_files"""
+        """version_raw_data -> version_processed_data -> push_to_remote -> trigger_github_dvc_commit"""
         processed_upstream = self._get_upstream_ids(
             pipeline_dag, "versioning.version_processed_data"
         )
@@ -279,10 +279,10 @@ class TestDependencies:
         )
         assert "versioning.version_processed_data" in push_upstream
 
-        commit_upstream = self._get_upstream_ids(
-            pipeline_dag, "versioning.commit_dvc_files"
+        trigger_upstream = self._get_upstream_ids(
+            pipeline_dag, "versioning.trigger_github_dvc_commit"
         )
-        assert "versioning.push_to_remote" in commit_upstream
+        assert "versioning.push_to_remote" in trigger_upstream
 
     def test_reporting_follows_versioning(self, pipeline_dag):
         """generate_pipeline_report should depend on versioning."""
