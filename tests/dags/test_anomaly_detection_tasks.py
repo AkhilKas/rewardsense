@@ -70,7 +70,7 @@ class TestDAGStructure:
 # =====================================================================
 
 try:
-    import airflow # noqa: F401
+    import airflow  # noqa: F401
 
     HAS_AIRFLOW = True
 except ImportError:
