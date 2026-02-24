@@ -866,6 +866,305 @@ def _trigger_github_dvc_commit(**context):
 
 
 # =============================================================================
+# Anomaly Detection
+
+# If CRITICAL anomalies are found, downstream tasks are short-circuited.
+# =============================================================================
+
+
+@timed_python_task("anomaly_detection.detect_anomalies")
+def _detect_anomalies(**context):
+    """Run anomaly detection on all cleaned/feature-engineered datasets.
+
+    Loads the latest feature-engineered checkpoints, runs the full
+    AnomalyDetector + DomainRuleEngine, persists reports to disk,
+    and pushes the max severity to XCom for downstream short-circuit.
+    """
+    import logging
+
+    from data_pipeline.anomaly_detection.detectors import (
+        AnomalyConfig,
+        AnomalyDetector,
+    )
+    from data_pipeline.anomaly_detection.rules import DomainRuleEngine
+    from data_pipeline.preprocessing.transform import TransformationPipeline
+
+    logger = logging.getLogger("airflow.task")
+    logger.info("🔍 Running anomaly detection on pipeline outputs...")
+
+    # ── Load config ─────────────────────────────────────────────────
+    anomaly_cfg_path = REPO_ROOT / "config" / "anomaly_detection_config.yaml"
+    if anomaly_cfg_path.exists():
+        config = AnomalyConfig.from_yaml(anomaly_cfg_path)
+        logger.info("Loaded anomaly config from %s", anomaly_cfg_path)
+    else:
+        config = AnomalyConfig()
+        logger.warning("No anomaly config found — using defaults")
+
+    detector = AnomalyDetector(config=config)
+    rule_engine = DomainRuleEngine()
+
+    # ── Load feature-engineered data from checkpoints ───────────────
+    transform_cfg_path = _resolve_transform_config_path()
+    pipeline = TransformationPipeline(config_path=transform_cfg_path)
+
+    # Find the latest features checkpoint
+    features_step = "03_features"
+    ckpt_dir = pipeline._step_ckpt_dir(features_step)
+
+    cards_df = None
+    txns_df = None
+    users_df = None
+
+    if pipeline.checkpoints_enabled and pipeline._checkpoint_exists(features_step):
+        logger.info("Loading feature data from checkpoint: %s", ckpt_dir)
+        if (ckpt_dir / "credit_cards_features.csv").exists():
+            cards_df = pipeline._load_df(ckpt_dir / "credit_cards_features.csv")
+        if (ckpt_dir / "transactions_features.csv").exists():
+            txns_df = pipeline._load_df(ckpt_dir / "transactions_features.csv")
+        if (ckpt_dir / "users_features.csv").exists():
+            users_df = pipeline._load_df(ckpt_dir / "users_features.csv")
+    else:
+        # Fallback: try final outputs
+        final_dir = pipeline.final_dir
+        logger.info("No checkpoint found — trying final dir: %s", final_dir)
+        if (final_dir / "credit_cards_features.csv").exists():
+            cards_df = pipeline._load_df(final_dir / "credit_cards_features.csv")
+        if (final_dir / "transactions_features.csv").exists():
+            txns_df = pipeline._load_df(final_dir / "transactions_features.csv")
+        if (final_dir / "users_features.csv").exists():
+            users_df = pipeline._load_df(final_dir / "users_features.csv")
+
+    # ── Run anomaly checks per dataset ──────────────────────────────
+    all_reports = []
+
+    # Numeric columns to check (exclude categorical identifiers)
+    card_numeric = [
+        "annual_fee",
+        "base_reward_rate",
+        "effective_annual_fee",
+        "net_value_annual",
+        "welcome_bonus_value_usd",
+        "annual_credits_value",
+    ]
+    txn_numeric = [
+        "total_spending",
+        "avg_transaction_amount",
+        "spending_diversity",
+        "card_switch_rate",
+        "num_cards_used",
+    ]
+    user_numeric = ["monthly_budget", "num_cards", "estimated_point_value"]
+
+    if cards_df is not None:
+        logger.info("Checking credit cards (%d rows)...", len(cards_df))
+        report = detector.run_all_checks(
+            cards_df,
+            dataset="credit_cards",
+            numeric_columns=card_numeric,
+        )
+        # Add domain rules
+        domain_anomalies = rule_engine.check_credit_card_rules(cards_df)
+        report.anomalies.extend(domain_anomalies)
+        report.total_checks += 1
+        all_reports.append(report)
+
+    if txns_df is not None:
+        logger.info("Checking transactions (%d rows)...", len(txns_df))
+        report = detector.run_all_checks(
+            txns_df,
+            dataset="transactions",
+            numeric_columns=txn_numeric,
+        )
+        domain_anomalies = rule_engine.check_transaction_rules(txns_df)
+        report.anomalies.extend(domain_anomalies)
+        report.total_checks += 1
+        all_reports.append(report)
+
+    if users_df is not None:
+        logger.info("Checking users (%d rows)...", len(users_df))
+        report = detector.run_all_checks(
+            users_df,
+            dataset="users",
+            numeric_columns=user_numeric,
+        )
+        domain_anomalies = rule_engine.check_user_rules(users_df)
+        report.anomalies.extend(domain_anomalies)
+        report.total_checks += 1
+        all_reports.append(report)
+
+    # ── Persist reports to disk ─────────────────────────────────────
+    report_dir = get_data_root() / "anomaly_reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    combined_result = {
+        "datasets_checked": len(all_reports),
+        "reports": {},
+        "has_critical": False,
+        "max_severity": "INFO",
+    }
+
+    for report in all_reports:
+        report_path = report_dir / f"{report.dataset}_anomaly_report.json"
+        report.to_json(report_path)
+        logger.info("Saved %s report to %s", report.dataset, report_path)
+
+        combined_result["reports"][report.dataset] = {
+            "anomaly_count": len(report.anomalies),
+            "has_critical": report.has_critical,
+            "max_severity": report.max_severity.name,
+            "summary": report.summary,
+        }
+
+        if report.has_critical:
+            combined_result["has_critical"] = True
+
+    # Determine overall max severity
+    if all_reports:
+
+        overall_max = max(r.max_severity for r in all_reports)
+        combined_result["max_severity"] = overall_max.name
+
+    # Push critical flag to XCom for short-circuit logic
+    ti = context.get("ti")
+    if ti:
+        ti.xcom_push(
+            key="has_critical_anomalies", value=combined_result["has_critical"]
+        )
+        ti.xcom_push(key="anomaly_max_severity", value=combined_result["max_severity"])
+
+    logger.info(
+        "Anomaly detection complete: %d datasets, critical=%s, max_severity=%s",
+        len(all_reports),
+        combined_result["has_critical"],
+        combined_result["max_severity"],
+    )
+
+    combined_result["status"] = "success"
+    return combined_result
+
+
+@timed_python_task("anomaly_detection.send_anomaly_alerts")
+def _send_anomaly_alerts(**context):
+    """Dispatch alerts for detected anomalies via existing AlertDispatcher."""
+    import logging
+
+    from data_pipeline.anomaly_detection.alert_integration import AnomalyAlertBridge
+    from data_pipeline.anomaly_detection.detectors import AnomalyReport
+
+    logger = logging.getLogger("airflow.task")
+    logger.info("📢 Processing anomaly alerts...")
+
+    ti = context.get("ti")
+    detection_result = ti.xcom_pull(task_ids="anomaly_detection.detect_anomalies") or {}
+
+    reports_summary = detection_result.get("reports", {})
+    has_critical = detection_result.get("has_critical", False)
+    max_severity = detection_result.get("max_severity", "INFO")
+
+    if max_severity == "INFO" and not has_critical:
+        logger.info("No warnings or critical anomalies — skipping alerts.")
+        return {"alerted": False, "reason": "no_anomalies", "status": "success"}
+
+    # Load persisted reports and dispatch via bridge
+    report_dir = get_data_root() / "anomaly_reports"
+    bridge = AnomalyAlertBridge()
+    alert_results = {}
+
+    for dataset_name, summary in reports_summary.items():
+        report_path = report_dir / f"{dataset_name}_anomaly_report.json"
+        if not report_path.exists():
+            logger.warning("Report file missing for %s", dataset_name)
+            continue
+
+        # Build a lightweight report for alerting from the summary
+        # (full report is on disk for detailed review)
+        from data_pipeline.anomaly_detection.detectors import Anomaly, AnomalySeverity
+
+        report = AnomalyReport(
+            dataset=dataset_name,
+            total_checks=summary.get("anomaly_count", 0),
+        )
+        # Recreate minimal anomalies from summary for the alert message
+        for sev_name, count in summary.get("summary", {}).items():
+            if count > 0:
+                sev = AnomalySeverity[sev_name]
+                report.anomalies.append(
+                    Anomaly(
+                        check_name="aggregated",
+                        severity=sev,
+                        message=f"{count} {sev_name}-level anomalies in {dataset_name}",
+                        dataset=dataset_name,
+                    )
+                )
+
+        result = bridge.process_report(report, alert_on_warning=True)
+        alert_results[dataset_name] = result
+        logger.info("[%s] Alert result: %s", dataset_name, result)
+
+    return {"alert_results": alert_results, "status": "success"}
+
+
+@timed_python_task("anomaly_detection.check_critical_gate")
+def _check_critical_gate(**context):
+    """Short-circuit gate: fail the task if CRITICAL anomalies exist.
+
+    When this task fails, downstream tasks (versioning, reporting)
+    are skipped via Airflow's default trigger rules, preventing
+    bad data from being versioned or deployed.
+
+    Set the Airflow variable ``ANOMALY_GATE_ENFORCE`` to ``false``
+    to disable enforcement (useful during development).
+    """
+    import logging
+
+    from airflow.models import Variable
+
+    logger = logging.getLogger("airflow.task")
+    ti = context.get("ti")
+
+    has_critical = ti.xcom_pull(
+        task_ids="anomaly_detection.detect_anomalies",
+        key="has_critical_anomalies",
+    )
+    max_severity = ti.xcom_pull(
+        task_ids="anomaly_detection.detect_anomalies",
+        key="anomaly_max_severity",
+    )
+
+    enforce = Variable.get("ANOMALY_GATE_ENFORCE", default_var="true").lower() == "true"
+
+    logger.info(
+        "Critical gate: has_critical=%s, max_severity=%s, enforce=%s",
+        has_critical,
+        max_severity,
+        enforce,
+    )
+
+    if has_critical and enforce:
+        raise RuntimeError(
+            f"CRITICAL anomalies detected (max_severity={max_severity}). "
+            "Pipeline halted to prevent versioning bad data. "
+            "Review anomaly reports in data/processed/current/anomaly_reports/. "
+            "Set Airflow variable ANOMALY_GATE_ENFORCE=false to override."
+        )
+
+    if has_critical and not enforce:
+        logger.warning(
+            "CRITICAL anomalies detected but gate enforcement is disabled. "
+            "Proceeding with caution."
+        )
+        return {
+            "gate": "passed_override",
+            "has_critical": True,
+            "max_severity": max_severity,
+        }
+
+    logger.info("No critical anomalies — gate passed.")
+    return {"gate": "passed", "has_critical": False, "max_severity": max_severity}
+
+
+# =============================================================================
 # DAG definition
 # =============================================================================
 
@@ -972,6 +1271,38 @@ with DAG(
 
         check_raw_data_ready >> clean >> features >> transform
 
+    # ── Task Group: Anomaly Detection ───────────────────────────────────────
+    with TaskGroup(
+        "anomaly_detection",
+        tooltip="Anomaly detection, alerting, and quality gate",
+    ) as anomaly_detection_group:
+        detect_anomalies = PythonOperator(
+            task_id="detect_anomalies",
+            python_callable=_detect_anomalies,
+            doc_md=(
+                "Run anomaly detection (missing values, outliers, schema, "
+                "drift, domain rules) on all feature-engineered datasets."
+            ),
+        )
+
+        send_anomaly_alerts = PythonOperator(
+            task_id="send_anomaly_alerts",
+            python_callable=_send_anomaly_alerts,
+            doc_md="Dispatch anomaly alerts via Slack/Email for WARNING+ anomalies.",
+        )
+
+        critical_gate = PythonOperator(
+            task_id="check_critical_gate",
+            python_callable=_check_critical_gate,
+            doc_md=(
+                "Quality gate: halts pipeline if CRITICAL anomalies found. "
+                "Override with Airflow variable ANOMALY_GATE_ENFORCE=false."
+            ),
+        )
+
+        # Detect first, then alert + gate in parallel
+        detect_anomalies >> [send_anomaly_alerts, critical_gate]
+
     # ── Task Group: Versioning ──────────────────────────────────────────
     with TaskGroup(
         "versioning", tooltip="Data versioning with DVC"
@@ -1076,6 +1407,7 @@ with DAG(
     )
 
     # ── Cross-group dependencies ────────────────────────────────────────
-    # start → ingestion → preprocessing → versioning → reporting → end
+    # start → ingestion → preprocessing → anomaly_detection → versioning → reporting → end
     pipeline_start >> ingestion_group >> preprocessing_group
-    preprocessing_group >> versioning_group >> reporting_group >> pipeline_end
+    preprocessing_group >> anomaly_detection_group
+    anomaly_detection_group >> versioning_group >> reporting_group >> pipeline_end
