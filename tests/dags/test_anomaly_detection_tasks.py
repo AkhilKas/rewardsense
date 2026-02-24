@@ -66,10 +66,18 @@ class TestDAGStructure:
 
 
 # =====================================================================
-# Gate logic tests (unit tests, no Airflow runtime)
+# Gate logic tests
 # =====================================================================
 
+try:
+    import airflow # noqa: F401
 
+    HAS_AIRFLOW = True
+except ImportError:
+    HAS_AIRFLOW = False
+
+
+@pytest.mark.skipif(not HAS_AIRFLOW, reason="Airflow not installed")
 class TestCriticalGateLogic:
     """Test the short-circuit gate behavior."""
 
