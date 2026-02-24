@@ -22,6 +22,11 @@ from data_pipeline.anomaly_detection.detectors import Anomaly, AnomalySeverity
 logger = logging.getLogger(__name__)
 
 
+def _as_numeric(series: pd.Series) -> pd.Series:
+    """Best-effort conversion for rule comparisons on mixed-type columns."""
+    return pd.to_numeric(series, errors="coerce")
+
+
 class DomainRuleEngine:
     """Applies RewardSense-specific business rules to detect domain anomalies."""
 
@@ -42,7 +47,8 @@ class DomainRuleEngine:
 
         # Rule 1: Reward rate sanity (no card gives > 10% base rate)
         if "base_reward_rate" in df.columns:
-            unrealistic = df[df["base_reward_rate"] > 10.0]
+            reward_rate = _as_numeric(df["base_reward_rate"])
+            unrealistic = df[reward_rate > 10.0]
             if len(unrealistic) > 0:
                 anomalies.append(
                     Anomaly(
@@ -70,7 +76,8 @@ class DomainRuleEngine:
 
         # Rule 2: Annual fee sanity (no legitimate card > $5000)
         if "annual_fee" in df.columns:
-            extreme_fee = df[df["annual_fee"] > 5000]
+            annual_fee = _as_numeric(df["annual_fee"])
+            extreme_fee = df[annual_fee > 5000]
             if len(extreme_fee) > 0:
                 anomalies.append(
                     Anomaly(
@@ -88,7 +95,8 @@ class DomainRuleEngine:
 
         # Rule 3: Welcome bonus ROI sanity (ROI > 100% is suspicious)
         if "welcome_bonus_roi" in df.columns:
-            suspicious_roi = df[df["welcome_bonus_roi"] > 1.0]
+            bonus_roi = _as_numeric(df["welcome_bonus_roi"])
+            suspicious_roi = df[bonus_roi > 1.0]
             if len(suspicious_roi) > 0:
                 anomalies.append(
                     Anomaly(
@@ -165,7 +173,8 @@ class DomainRuleEngine:
         # Rule 1: Suspicious amount concentration
         if "amount" in df.columns:
             # > 1% of transactions over $10K is unusual
-            high_val = df[df["amount"] > 10000]
+            amount = _as_numeric(df["amount"])
+            high_val = df[amount > 10000]
             ratio = len(high_val) / max(n, 1)
             if ratio > 0.01:
                 anomalies.append(

@@ -145,6 +145,9 @@ class TestTaskExistence:
         "preprocessing.clean_data",
         "preprocessing.engineer_features",
         "preprocessing.run_transform_pipeline",
+        # Quality group
+        "quality.validate_schema_expectations",
+        "quality.generate_data_profiles",
         # Versioning group
         "versioning.version_raw_data",
         "versioning.version_processed_data",
@@ -199,6 +202,13 @@ class TestTaskGroups:
             t for t in pipeline_dag.tasks if t.task_id.startswith("versioning.")
         ]
         assert len(versioning_tasks) == 4
+
+    def test_quality_group_has_two_tasks(self, pipeline_dag):
+        """Quality group should contain schema validation and profiling tasks."""
+        quality_tasks = [
+            t for t in pipeline_dag.tasks if t.task_id.startswith("quality.")
+        ]
+        assert len(quality_tasks) == 2
 
     def test_reporting_group_has_five_tasks(self, pipeline_dag):
         """Reporting group should contain 5 tasks (report, alerts, metrics, perf)."""
@@ -260,12 +270,24 @@ class TestDependencies:
         assert "preprocessing.engineer_features" in transform_upstream
 
     def test_versioning_follows_preprocessing(self, pipeline_dag):
-        """version_raw_data should depend on preprocessing completion."""
+        """version_raw_data should depend on quality completion."""
         version_upstream = self._get_upstream_ids(
             pipeline_dag, "versioning.version_raw_data"
         )
-        # The upstream is the preprocessing group (via run_transform_pipeline)
+        # The upstream is the quality group (after preprocessing completes)
         assert len(version_upstream) > 0
+
+    def test_quality_chain(self, pipeline_dag):
+        """validate_schema_expectations -> generate_data_profiles -> version_raw_data."""
+        profile_upstream = self._get_upstream_ids(
+            pipeline_dag, "quality.generate_data_profiles"
+        )
+        assert "quality.validate_schema_expectations" in profile_upstream
+
+        version_upstream = self._get_upstream_ids(
+            pipeline_dag, "versioning.version_raw_data"
+        )
+        assert "quality.generate_data_profiles" in version_upstream
 
     def test_versioning_chain(self, pipeline_dag):
         """version_raw_data -> version_processed_data -> push_to_remote -> trigger_github_dvc_commit"""
