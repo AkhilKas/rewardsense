@@ -27,6 +27,33 @@ logger = logging.getLogger("airflow.task")
 DEFAULT_CONFIG_PATH = Path("config/alerting_config.yaml")
 
 
+def _resolve_alerting_config_path(path: Path) -> Path:
+    """Resolve alerting config across local and Composer layouts."""
+    candidates = [
+        path,
+        Path.cwd() / path,
+        Path(__file__).resolve().parents[3] / path,
+        Path("/home/airflow/gcs/dags") / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return path
+
+
+def _get_config_secret(name: str, default: str = "") -> str:
+    """Read secret/config value from env first, then Airflow Variable fallback."""
+    value = os.getenv(name)
+    if value:
+        return value
+    try:
+        from airflow.models import Variable
+
+        return Variable.get(name, default_var=default) or default
+    except Exception:  # noqa: BLE001
+        return default
+
+
 # =========================================================================
 # Severity Enum
 # =========================================================================
@@ -284,6 +311,7 @@ class AlertDispatcher:
 
     @staticmethod
     def _load_config(path: Path) -> dict[str, Any]:
+        path = _resolve_alerting_config_path(path)
         if path.exists():
             return yaml.safe_load(path.read_text()) or {}
         logger.warning("Alerting config not found at %s — using defaults.", path)
@@ -293,10 +321,12 @@ class AlertDispatcher:
         # Slack
         slack_cfg = channels.get("slack", {})
         if slack_cfg.get("enabled", False):
-            webhook = os.getenv(
+            webhook = _get_config_secret(
                 slack_cfg.get("webhook_url_env", "SLACK_WEBHOOK_URL"), ""
             )
-            channel = os.getenv(slack_cfg.get("channel_env", "SLACK_CHANNEL"), "")
+            channel = _get_config_secret(
+                slack_cfg.get("channel_env", "SLACK_CHANNEL"), ""
+            )
             if webhook:
                 self._slack = SlackAlerter(webhook_url=webhook, channel=channel)
             else:
@@ -305,8 +335,10 @@ class AlertDispatcher:
         # Email
         email_cfg = channels.get("email", {})
         if email_cfg.get("enabled", False):
-            api_key = os.getenv(email_cfg.get("api_key_env", "SENDGRID_API_KEY"), "")
-            recipients_raw = os.getenv(
+            api_key = _get_config_secret(
+                email_cfg.get("api_key_env", "SENDGRID_API_KEY"), ""
+            )
+            recipients_raw = _get_config_secret(
                 email_cfg.get("recipients_env", "ALERT_EMAIL"), ""
             )
             recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]

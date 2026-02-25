@@ -366,6 +366,16 @@ Every push/PR to `main` and `develop` is validated across Python 3.9/3.10/3.11 w
 
 This is intentionally strict to prevent drift in style, correctness, and reproducibility.
 
+Data-versioning automation workflow: `.github/workflows/dvc-version-commit.yaml`
+
+1. Uses GitHub OIDC + GCP Workload Identity Federation (no static GCP key in GitHub).
+2. Authenticates as `rewardsense-pipeline@rewardsense.iam.gserviceaccount.com`.
+3. Runs on:
+   - `repository_dispatch` from Airflow (`event_type: dvc-commit`)
+   - `workflow_dispatch` manual trigger
+   - `push` to `main` when DVC/data paths change (`data/**`, `dvc.lock`, `*.dvc`)
+4. Pulls/checks DVC state and commits `.dvc`/`dvc.lock` metadata updates when needed.
+
 ---
 
 ## 10. Data Validation and Profiling in Production Path
@@ -400,6 +410,28 @@ Anomaly stage includes:
 3. alert dispatch
 4. critical gate
 
+Alerting behavior (current configuration):
+
+1. Slack: `WARNING` and `CRITICAL`
+2. Email (SendGrid): `CRITICAL` only
+3. Performance regression alerts are sent as `WARNING`
+
+Alert runtime resolution in Composer:
+
+1. Alert dispatcher reads config from `config/alerting_config.yaml` with Composer-safe path resolution.
+2. Secrets are read from environment variables first, then Airflow Variables fallback.
+3. Required keys:
+   - `SLACK_WEBHOOK_URL`
+   - `SLACK_CHANNEL`
+   - `SENDGRID_API_KEY`
+   - `ALERT_EMAIL`
+
+Recent production verification confirmed:
+
+1. `anomaly_detection.send_anomaly_alerts` sends Slack for warning/critical anomalies.
+2. Critical anomaly alerts send both Slack and email.
+3. Regression alerts are delivered via Slack.
+
 Gate control variable:
 
 1. `ANOMALY_GATE_ENFORCE=true`: blocks downstream versioning/reporting when critical anomalies are found.
@@ -428,6 +460,7 @@ Related module:
 2. Composer data root is `/home/airflow/gcs/data/processed/current`.
 3. DAG bucket code root is under `/home/airflow/gcs/dags/`.
 4. If you update modules under `src/data_pipeline/*`, re-import them to Composer DAG storage.
+5. Composer DAG buckets may contain duplicate/stale module paths; always verify the active object path if behavior does not match local code.
 
 ---
 
@@ -473,6 +506,17 @@ pip install setuptools
 1. Confirm code deployed to Composer DAG bucket.
 2. Confirm paths point to `/home/airflow/gcs/data/processed/current`.
 3. Verify with `gsutil ls -r` in the Composer bucket data prefix.
+
+### Alerts are not sent even though tasks succeed
+
+1. Confirm `config/alerting_config.yaml` exists in Composer DAG bucket.
+2. Confirm Airflow Variables (or env vars) are set:
+   - `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`, `SENDGRID_API_KEY`, `ALERT_EMAIL`
+3. Check logs for:
+   - `Alerting config not found ...` (config path issue)
+   - `Slack enabled but SLACK_WEBHOOK_URL not set.`
+   - `Email enabled but ALERT_EMAIL not set.`
+4. If Composer has duplicate module objects, redeploy/overwrite the active `data_pipeline/monitoring/alerting.py` object path.
 
 ### DVC push says “Everything is up to date” but no Git history update
 
