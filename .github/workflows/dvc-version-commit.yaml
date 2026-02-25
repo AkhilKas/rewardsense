@@ -90,13 +90,11 @@ jobs:
             TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
             RUN_ID="${{ github.event.inputs.dag_run_id || github.event.client_payload.dag_run_id || 'push-triggered' }}"
             
-            git commit -m "chore(data): auto-update DVC tracking files
-
-Run ID: ${RUN_ID}
-Timestamp: ${TIMESTAMP}
-Triggered by: ${{ github.event_name }}
-
-[skip ci]"
+            git commit \
+              -m "chore(data): auto-update DVC tracking files [skip ci]" \
+              -m "Run ID: ${RUN_ID}" \
+              -m "Timestamp: ${TIMESTAMP}" \
+              -m "Triggered by: ${{ github.event_name }}"
             git push
             echo "✅ DVC files committed and pushed"
           fi
