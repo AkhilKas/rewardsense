@@ -148,6 +148,10 @@ class TestTaskExistence:
         # Quality group
         "quality.validate_schema_expectations",
         "quality.generate_data_profiles",
+        # Anomaly detection group
+        "anomaly_detection.detect_anomalies",
+        "anomaly_detection.send_anomaly_alerts",
+        "anomaly_detection.check_critical_gate",
         # Versioning group
         "versioning.version_raw_data",
         "versioning.version_processed_data",
@@ -278,16 +282,21 @@ class TestDependencies:
         assert len(version_upstream) > 0
 
     def test_quality_chain(self, pipeline_dag):
-        """validate_schema_expectations -> generate_data_profiles -> version_raw_data."""
+        """validate_schema_expectations -> generate_data_profiles -> anomaly -> version_raw_data."""
         profile_upstream = self._get_upstream_ids(
             pipeline_dag, "quality.generate_data_profiles"
         )
         assert "quality.validate_schema_expectations" in profile_upstream
 
+        anomaly_upstream = self._get_upstream_ids(
+            pipeline_dag, "anomaly_detection.detect_anomalies"
+        )
+        assert "quality.generate_data_profiles" in anomaly_upstream
+
         version_upstream = self._get_upstream_ids(
             pipeline_dag, "versioning.version_raw_data"
         )
-        assert "quality.generate_data_profiles" in version_upstream
+        assert "anomaly_detection.check_critical_gate" in version_upstream
 
     def test_versioning_chain(self, pipeline_dag):
         """version_raw_data -> version_processed_data -> push_to_remote -> trigger_github_dvc_commit"""
