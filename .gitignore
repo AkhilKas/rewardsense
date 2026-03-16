@@ -108,6 +108,7 @@ gx/plugins/
 !schemas/*.json
 !gx/expectations/*.json
 !gx/checkpoints/*.json
+!tests/model_pipeline/fixtures/*.json
 *-key.json
 service-account*.json
 

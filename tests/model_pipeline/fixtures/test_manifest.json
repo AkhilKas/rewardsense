@@ -1,0 +1,25 @@
+{
+    "run_id": "test_run_001",
+    "started_at": "2026-01-01T00:00:00+00:00",
+    "finished_at": "2026-01-01T00:01:00+00:00",
+    "sources": [
+        {
+            "name": "api:creditcardbonuses",
+            "ok": true,
+            "records": 5
+        },
+        {
+            "name": "scrape:issuers",
+            "ok": true,
+            "records": 3
+        }
+    ],
+    "artifact_root": "/tmp/test_data",
+    "files": [
+        {
+            "path": "offers/test_offers.json",
+            "bytes": 1024,
+            "sha256": "abc123"
+        }
+    ]
+}

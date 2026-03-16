@@ -1,0 +1,6 @@
+card_name,issuer,annual_fee,base_reward_rate,effective_annual_fee,net_value_annual,welcome_bonus_value_usd,network,currency,is_business
+Chase Sapphire Preferred,CHASE,95.0,2.0,95.0,150.0,750.0,VISA,CHASE,False
+Amex Gold Card,AMERICAN EXPRESS,250.0,4.0,10.0,500.0,600.0,AMERICAN_EXPRESS,AMERICAN_EXPRESS,False
+Capital One Venture X,CAPITAL ONE,395.0,2.0,95.0,400.0,750.0,VISA,CAPITAL_ONE,False
+Citi Double Cash,CITI,0.0,2.0,0.0,200.0,0.0,MASTERCARD,CITI,False
+Discover it,DISCOVER,0.0,1.0,0.0,100.0,0.0,DISCOVER,USD,False
