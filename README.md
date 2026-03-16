@@ -1,117 +1,492 @@
 # RewardSense
 
-Cost-aware, explainable credit-card rewards data platform and MLOps pipeline.
+**Cost-aware, explainable credit-card rewards data platform and MLOps pipeline.**
 
-RewardSense collects card-offer data from multiple sources, generates synthetic user/transaction data, preprocesses and engineers features, validates data quality, profiles datasets, detects anomalies, versions outputs with DVC, and publishes pipeline metrics/reports through Apache Airflow (local and Cloud Composer).
+RewardSense solves the problem of credit card reward optimization — telling users which card to use for any given purchase to maximize rewards, while tracking card benefits and suggesting new cards. It combines deterministic financial logic for correctness, ML models for personalization, and LLMs with RAG for natural language explanations.
 
-Repository: [https://github.com/avadharj/rewardsense](https://github.com/avadharj/rewardsense)
+The platform collects card-offer data from multiple sources, generates synthetic user/transaction data, preprocesses and engineers features, validates data quality, profiles datasets, detects anomalies, versions outputs with DVC, and publishes pipeline metrics/reports through Apache Airflow (local and Cloud Composer).
+
+**Repository:** [github.com/avadharj/rewardsense](https://github.com/avadharj/rewardsense)
 
 ---
 
-## 1. Project Overview
+## Table of Contents
 
-### What this repository contains
+1. [End-to-End Architecture](#1-end-to-end-architecture)
+2. [Data Acquisition](#2-data-acquisition)
+3. [Preprocessing & Validation](#3-preprocessing--validation)
+4. [Monitoring & Orchestration](#4-monitoring--orchestration)
+5. [Engineering Excellence](#5-engineering-excellence)
+6. [Repository Structure](#6-repository-structure)
+7. [Environment Setup](#7-environment-setup)
+8. [Reproducibility & DVC](#8-reproducibility--dvc)
+9. [Running the Pipeline](#9-running-the-pipeline)
+10. [Quality, Profiling & Anomaly Outputs](#10-quality-profiling--anomaly-outputs)
+11. [Testing Strategy](#11-testing-strategy)
+12. [CI/CD Pipeline](#12-cicd-pipeline)
+13. [Reproduce on a New Machine](#13-reproduce-on-a-new-machine)
+14. [Common Troubleshooting](#14-common-troubleshooting)
+15. [Documentation References](#15-documentation-references)
+16. [Team](#16-team)
 
-1. A production-style Airflow DAG (`rewardsense_data_pipeline`) for end-to-end orchestration.
-2. Modular pipeline code under `src/data_pipeline/*` for ingestion, preprocessing, validation, profiling, anomaly detection, and monitoring.
-3. DVC-based data versioning with a GCS remote.
-4. Comprehensive testing (unit, DAG-structure, and integration tests).
-5. Strict CI gates for linting, formatting, typing, and test coverage.
+---
 
-### Core pipeline stages
+## 1. End-to-End Architecture
 
-1. Ingestion
-2. Preprocessing
-3. Quality (schema validation + profiling)
-4. Anomaly detection + quality gate
-5. Versioning (DVC)
-6. Reporting/monitoring
+### System Vision
 
-### High-level DAG flow
+RewardSense is a production-style MLOps data platform that ingests credit card offer data from web scrapers, REST APIs, and synthetic generators, then processes it through a multi-stage pipeline orchestrated by Apache Airflow on GCP Cloud Composer. The pipeline cleans, validates, feature-engineers, and versions the data — producing ML-ready feature CSVs, quality reports, anomaly alerts, and performance dashboards.
 
-```text
-pipeline_start
-  -> ingestion
-  -> preprocessing
-  -> quality
-  -> anomaly_detection
-  -> versioning
-  -> reporting
-  -> pipeline_end
+### Pipeline Stages Overview
+
+The weekly Airflow DAG (`rewardsense_data_pipeline`) runs **every Sunday at 6:00 AM UTC** and executes **6 sequential task groups**:
+
+```
+pipeline_start → Ingestion → Preprocessing → Quality → Anomaly Detection → Versioning → Reporting → pipeline_end
 ```
 
+| Stage | Purpose | Key Technology |
+|---|---|---|
+| **Ingestion** | Acquire card data from scrapers, APIs, and generate synthetic data | Web scraping, REST APIs, generators |
+| **Preprocessing** | Clean, validate, feature-engineer, and transform datasets | TransformationPipeline with checkpointing |
+| **Quality** | Validate data against schema expectations, generate profiles | Great Expectations |
+| **Anomaly Detection** | Statistical outlier detection, drift analysis, critical gating | IQR, Z-score, KS tests |
+| **Versioning** | Track data artifacts with DVC, push to GCS | DVC, Git |
+| **Reporting** | Generate reports, log metrics, send alerts, regression checks | AlertDispatcher (Slack/Email) |
+
+### Infrastructure Stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | Apache Airflow on GCP Cloud Composer |
+| Compute | Cloud Composer workers (managed GKE pods) |
+| Storage | GCS buckets mounted at `/home/airflow/gcs/` |
+| Data Versioning | DVC → `gs://rewardsense-dvc-store` |
+| CI/CD | GitHub Actions (lint, test, build across Python 3.9–3.11) |
+| Quality Gates | Great Expectations, Pydantic schemas, anomaly detection |
+| Monitoring | Prometheus, Grafana, Evidently AI, Cloud Logging |
+| Alerting | Slack + Email via AlertDispatcher with severity routing |
+
 ---
 
-## 2. Epic/Story Delivery Model
+## 2. Data Acquisition
 
-The project is intentionally implemented in **epics and stories** (see `/Implementation_Phase_1.md` and `/Scoping_doc.md`).
+RewardSense ingests credit card data from **4 parallel sources** (3 scrapers/API in parallel, plus a synthetic generator), then merges and deduplicates.
 
-### Delivery structure in this repo
+### 2.1 Web Scrapers
 
-1. Epic 1: Environment and infrastructure setup
-2. Epic 2: Data acquisition (scrapers, API fetcher, synthetic generators)
-3. Epic 3: Preprocessing and transformation pipeline
-4. Epic 4: Testing framework
-5. Epic 5: Airflow DAG orchestration and operational monitoring
-6. Epic 6: Data quality
-   - Story 6.2: Great Expectations-style schema validation
-   - Story 6.3: Data profiling/statistics generation
-7. Epic 7: Anomaly detection and quality gate enforcement
-8. Epic 9: Pipeline performance monitoring and stage optimization
+All scrapers inherit from `BaseScraper` (an abstract base class), which provides rate limiting with configurable delay between requests, automatic retries with exponential backoff (via `urllib3.Retry`), session management with proper headers and user-agent rotation, context manager support for clean resource cleanup, and statistics tracking (pages fetched, errors, timing).
 
-The implementation reflects this layering both in module structure and DAG task groups.
+| Scraper | Source | Module | Output |
+|---|---|---|---|
+| **NerdWallet** | NerdWallet website | `nerdwallet_scraper.py` | `offers/nerdwallet.json` |
+| **Issuer Scrapers** | Chase, Amex | `issuer_scrapers.py` | `offers/issuers.json` |
+
+**Concurrency optimization:** Issuer scrapers execute concurrently using `ThreadPoolExecutor` (up to 4 workers), reducing end-to-end ingestion latency.
+
+### 2.2 API Client
+
+The `CreditCardBonusesClient` fetches normalized card offers from the CreditCardBonuses REST API. The architecture separates concerns cleanly across four modules:
+
+| Module | Responsibility |
+|---|---|
+| `client_base.py` | HTTP session management, retries, error handling |
+| `credit_card_bonuses_api.py` | API-specific endpoints and response parsing |
+| `normalizer.py` | Transform raw API responses → `CardOffer` Pydantic models |
+| `schema.py` | `CardOffer` schema with field validators |
+
+All API responses are normalized into `CardOffer` Pydantic models before persisting, ensuring type safety and data consistency.
+
+### 2.3 Synthetic Data Generation
+
+Since real user transaction data raises privacy concerns, RewardSense generates realistic synthetic data for training and testing:
+
+| Generator | Output | Config |
+|---|---|---|
+| `UserProfileGenerator` | `user_profiles.csv` — 100 users with archetypes, budgets, card portfolios | Seed-controlled (default: 42) |
+| `TransactionGenerator` | `transactions.csv` — 30K+ transactions with categories, MCC codes, amounts | Archetype-driven spending patterns |
+
+**Smart caching:** If the seed and user count haven't changed between runs, the synthetic data task skips regeneration and returns cached results, saving significant compute time.
+
+**Memory optimization:** The DAG uses `gc.collect()` after generation and `_write_csv_chunked()` to write large DataFrames in configurable chunks (default: 25K rows), reducing peak memory pressure on Cloud Composer workers.
+
+### 2.4 Merge & Manifest
+
+`merge_card_data` pulls XCom metrics from the 3 upstream scrapers/API, counts total cards, and writes a `manifest_latest.json` file. This manifest serves as a signal to the preprocessing stage that ingestion is complete.
+
+```json
+{
+  "timestamp": "2026-03-12T23:35:00",
+  "total_merged_cards": 142,
+  "sources": {
+    "nerdwallet": 45,
+    "issuers": 52,
+    "api": 45
+  }
+}
+```
+
+### 2.5 Data Card
+
+| Attribute | Credit Card Dataset | User Dataset |
+|---|---|---|
+| Size | ~100 cards | ~100 users |
+| Fields | Reward rates, caps, fees, credits, expiration dates | user_id, card_id, redemption_preference |
+| Sources | Chase, Amex, Citi, Capital One, Discover, NerdWallet | Synthetic (seeded) |
+| Privacy | Public card data only | No real PII — fully synthetic |
+| Versioning | DVC tracked | DVC tracked |
 
 ---
 
-## 3. Repository Structure
+## 3. Preprocessing & Validation
 
-```text
+### 3.1 Preprocessing Pipeline
+
+The preprocessing stage uses the `TransformationPipeline` — a 1,000+ line orchestrator that runs 3 sequential steps with **checkpointing** and **audit logging**.
+
+```
+check_raw_data_ready → clean_data → engineer_features → run_transform_pipeline
+```
+
+#### Step 1: Data Cleaning (`clean_data`)
+
+| Operation | Details |
+|---|---|
+| **Input** | Raw CSVs + JSONs from ingestion |
+| **Deduplication** | By `card_id` or (`card_name`, `issuer`) |
+| **Issuer standardization** | Uppercase, remove underscores, alias mapping (e.g., "AMEX" → "AMERICAN EXPRESS") |
+| **Fee validation** | 0 ≤ `annual_fee` < $1,000; remove out-of-range |
+| **Amount validation** | Remove negative and zero-amount transactions |
+| **Date validation** | Remove future dates and invalid formats |
+| **Suspicious flagging** | Flag transactions > $10,000 |
+| **Missing category** | Impute with "unknown" |
+| **Welcome bonus parsing** | Extract amount, unit, spend requirement, time limit |
+| **Output** | Checkpoint `02_cleaned/` (3 clean CSVs) |
+
+#### Step 2: Feature Engineering (`engineer_features`)
+
+Three specialized classes, one per dataset:
+
+**Credit Card Features:**
+
+| Feature | How It's Computed |
+|---|---|
+| `base_reward_rate` | Extracted from nested `reward_rates` dict/JSON |
+| `welcome_bonus_value_usd` | Bonus amount × currency valuation (e.g., miles = 1.2 cents) |
+| `welcome_bonus_roi` | Bonus value / spend requirement |
+| `bonus_difficulty` | Easy (<$2K, 90+ days), Medium, Hard (>$5K or <60 days) |
+| `annual_credits_value` | Sum of all credit benefit values |
+| `effective_annual_fee` | Annual fee − credits value |
+| `net_value_annual` | Expected rewards − effective fee |
+
+**Transaction Features:**
+
+| Feature | Description |
+|---|---|
+| `total_spending`, `total_transactions` | Totals across all categories |
+| `{category}_total_spent` | Spending pivot by category (dining, travel, etc.) |
+| `spending_diversity` | Shannon entropy of spending distribution |
+| `weekend_spending_ratio` | Proportion of transactions on weekends |
+
+**User Profile Features:**
+
+| Feature | Description |
+|---|---|
+| `num_cards` | Parsed from cards list string |
+| `monthly_budget_log`, `annual_budget` | Budget transformations |
+| `budget_quartile` | Q1 (low) through Q4 (high) |
+| `age_group_ordinal` | Ordinal encoding: 18-25=1, 26-35=2, … 65+=5 |
+
+#### Step 3: Transform Pipeline
+
+The `TransformationPipeline` runs three internal steps: `_step_load()` loads raw data from ingestion outputs, `_step_clean()` applies all cleaning functions, and `_step_features()` applies all feature engineering followed by `_write_final_outputs()` to save to the `final/` directory.
+
+**Output directory structure:**
+
+```
+data/processed/current/transformed/<run_id>/
+├── checkpoints/
+│   ├── 01_loaded/     (raw CSVs + load_report.json + _DONE)
+│   ├── 02_cleaned/    (cleaned CSVs + clean_report.json + _DONE)
+│   └── 03_features/   (feature CSVs + features_report.json + _DONE)
+├── final/
+│   ├── credit_cards_features.csv
+│   ├── transactions_features.csv
+│   └── users_features.csv
+└── audit.json
+```
+
+**Checkpointing & Resume:** Each step writes a `_DONE` sentinel file after completion. If the pipeline fails mid-way and is retried, it resumes from the last completed checkpoint instead of reprocessing from scratch. Configured via `transform.yaml`.
+
+### 3.2 Validation (Two Layers)
+
+RewardSense uses a dual-layer validation strategy:
+
+| | **Pydantic** | **Great Expectations** |
+|---|---|---|
+| **Scope** | Individual record | Entire dataset |
+| **What it checks** | Types, field constraints, format | Statistical properties, distributions, patterns |
+| **When** | At data boundaries (parse time) | After pipeline stages (batch validation) |
+| **Error output** | Exact field + constraint violated | Expectation result counts + summaries |
+
+#### Layer 1: Pydantic Schemas
+
+Pydantic v2 models enforce data contracts at every pipeline stage. Schemas exist for each processing step:
+
+| Stage | Credit Cards | Transactions | Users |
+|---|---|---|---|
+| Raw | `CreditCardRaw` | `TransactionRaw` | `UserProfileRaw` |
+| Cleaned | `CreditCardCleaned` | `TransactionCleaned` | — |
+| Features | `CreditCardFeatures` | `TransactionFeatures` | `UserProfileFeatures` |
+
+Example constraints (`CreditCardCleaned`): `annual_fee` is a float with enforced range (ge=0, lt=1000), `card_id` is required and non-null, and `reward_rates` is guaranteed to exist after cleaning.
+
+Shared validators in `validators.py` ensure consistent validation across schemas: `validate_user_id_format` (must match `user_XXXX`), `validate_transaction_id_format` (must match `txn_XXXXXXX`), `validate_mcc_code` (4-digit integer, 1000–9999), `validate_amount_positive` (must be > 0), and `validate_category` (must be in known category set).
+
+#### Layer 2: Great Expectations
+
+Dataset-level validation suites run after pipeline stages:
+
+| Suite | Key Expectations |
+|---|---|
+| `credit_cards_suite` | `card_id` unique & not null, `card_name` not null, `annual_fee` between 0–1000 (95% mostly), `reward_rates` not null |
+| `transactions_suite` | Columns match expected order, `transaction_id` matches `^txn_\d+$`, `user_id` matches `^user_\d{4}$`, amount > 0, category in known set |
+| `user_profiles_suite` | `user_id` not null, `archetype` not null |
+
+### 3.3 Data Flow Summary
+
+```
+Ingestion outputs (3 raw datasets)
+        │
+        ▼
+Step 1: Cleaning → checkpoint 02_cleaned/ (3 clean CSVs)
+        │
+        ▼
+Step 2: Feature Engineering → checkpoint 03_features/ (3 feature CSVs)
+        │
+        ▼
+Step 3: Final Transform → transformed/<run_id>/final/ + audit.json
+        │
+        ▼
+Quality: Great Expectations validation + data profiling
+        │
+        ▼
+Anomaly Detection → quality gate
+        │
+        ▼
+Versioning (DVC) → Reporting
+```
+
+### 3.4 Dataset Schemas
+
+**credit_cards:**
+
+| Column | Description |
+|---|---|
+| `card_id` | Unique card identifier |
+| `card_name` | Normalized name (no trademark symbols, title case) |
+| `card_name_original` | Original name before normalization |
+| `issuer` | Standardized issuer (uppercase, aliases resolved like AMEX → AMERICAN EXPRESS) |
+| `issuer_original` | Original issuer before standardization |
+| `source` | Which source it came from (nerdwallet, issuers, creditcardbonuses_api) |
+| `annual_fee` | Validated to be between $0 and $1000 |
+
+**users:**
+
+| Column | Description |
+|---|---|
+| `user_id` | Format: `user_0001`, deduplicated |
+| `archetype` | Spending persona (young_professional, suburban_family, frequent_traveler, budget_conscious, high_roller, etc.) |
+| `monthly_budget` | Validated numeric, missing imputed with median |
+| `cards` | String representation of card list |
+| `redemption_preference` | cash_back, travel_portal, travel_transfer, etc. |
+| `age_group` | 18-25, 26-35, 36-50, 51-65, 65+ |
+| `location_type` | urban, suburban, rural |
+
+**transactions:**
+
+| Column | Description |
+|---|---|
+| `transaction_id` | Format: `txn_0000123` |
+| `user_id` | Format: `user_0001` |
+| `date` | Validated datetime (no future dates, no unparseable) |
+| `category` | Lowercase, standardized (dining, travel, groceries, etc.; missing filled with "unknown") |
+| `merchant` | Merchant name |
+| `mcc_code` | 4-digit Merchant Category Code, validated |
+| `amount` | Positive float (negatives removed) |
+| `card_used` | Which credit card was used |
+
+---
+
+## 4. Monitoring & Orchestration
+
+### 4.1 Pipeline Orchestration
+
+The DAG uses **TaskGroups** for logical organization and **XCom** for inter-task communication.
+
+| Feature | Implementation |
+|---|---|
+| **Schedule** | Weekly: `0 6 * * 0` (Sunday 6 AM UTC) |
+| **Retries** | 2 retries with 5-minute delay |
+| **Execution timeout** | 4 hours per task |
+| **SLA** | 3 hours |
+| **Catchup** | Disabled (no backfill) |
+| **Max active runs** | 1 (no parallel DAG runs) |
+| **Callbacks** | `on_failure_callback`, `on_success_callback`, `on_dag_success` |
+
+### 4.2 Versioning (DVC)
+
+Data artifacts are versioned with DVC and pushed to a GCS remote. The versioning task group runs four sequential tasks:
+
+```
+version_raw_data → version_processed_data → push_to_remote → commit_dvc_files
+```
+
+`.dvc` files pin exact data content hashes. The DVC remote (`gs://rewardsense-dvc-store`) stores immutable content objects. Teammates pull exact versions by checking out the same Git commit and running `dvc pull`.
+
+### 4.3 Alerting System
+
+The `AlertDispatcher` routes alerts to Slack and Email based on severity:
+
+| Component | Purpose |
+|---|---|
+| **Severity enum** | INFO (0) · WARNING (1) · CRITICAL (2) |
+| **SlackAlerter** | Posts to Slack via Incoming Webhook with severity-colored formatting |
+| **EmailAlerter** | Sends via SendGrid API or SMTP fallback |
+| **AlertDispatcher** | Reads `alerting_config.yaml`, routes based on severity thresholds, deduplicates alerts within a configurable time window |
+
+**Alert triggers:** Task failures trigger CRITICAL alerts immediately. Pipeline completion triggers an INFO summary. Anomaly detection triggers WARNING or CRITICAL depending on severity. Performance regression triggers WARNING with bottleneck details.
+
+**Required environment variables / Airflow Variables:** `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`, `SENDGRID_API_KEY`, `ALERT_EMAIL`.
+
+### 4.4 Anomaly Detection & Quality Gate
+
+The anomaly stage runs statistical anomaly checks (IQR, Z-score), domain-rule checks, alert dispatch, and a critical quality gate.
+
+**Gate control variable:**
+- `ANOMALY_GATE_ENFORCE=true`: blocks downstream versioning/reporting when critical anomalies are found.
+- `ANOMALY_GATE_ENFORCE=false`: logs critical anomalies but allows continuation (useful for verification/testing runs).
+
+**Drift detection:** Kolmogorov-Smirnov tests compare current vs. reference data distributions to catch data drift between runs.
+
+### 4.5 Performance Monitoring
+
+The `PipelinePerformanceMonitor` provides:
+
+| Feature | Details |
+|---|---|
+| **Task timing** | `@timed_python_task` decorator wraps every `PythonOperator` callable, persisting execution times to JSONL |
+| **Run snapshots** | Per-run JSON with task spans (start, end, duration) for Gantt visualization |
+| **Historical dashboard** | Trend analysis across last 20 runs with bottleneck identification |
+| **Regression detection** | Compares current run durations against median of recent history; flags if >20% slower |
+
+### 4.6 Reporting Pipeline
+
+The `PipelineReportGenerator` pulls XCom values from every upstream task, computes timing statistics, and writes timestamped JSON reports to `data/reports/`.
+
+```
+generate_pipeline_report
+    ├──→ log_pipeline_metrics
+    ├──→ send_pipeline_alerts
+    │
+    └──→ generate_performance_dashboard
+              └──→ check_performance_regression
+```
+
+### 4.7 DAG Callbacks
+
+Every task has `on_failure_callback` and `on_success_callback` wired to `callbacks.py`. These use **deferred imports** to keep DAG parsing fast — modules are only imported when the callback actually fires.
+
+---
+
+## 5. Engineering Excellence
+
+### 5.1 Pydantic Schema Enforcement
+
+RewardSense uses Pydantic v2 models to enforce data contracts at every pipeline stage. The `schemas/` directory defines typed models for raw, cleaned, and feature-engineered data:
+
+| Schema | Key Validations |
+|---|---|
+| `CardOffer` | `annual_fee` auto-strips `$` and `,`; `reward_rates` keys lowercased; categories normalized; raw payload preserved for audit |
+| `TransactionRaw` | `user_id` must match `user_XXXX` format; `mcc_code` must be 4-digit int (1000–9999); `amount` must be positive |
+| `UserProfileRaw` | `archetype` validated against known archetypes; `age_group` constrained to valid ranges; `redemption_preference` checked against known options |
+| `CreditCardFeatures` | All financial features typed with constraints; `Config.extra = "allow"` permits dynamic one-hot columns |
+| `FeatureRegistry` | Typed `Literal` for `data_type` and `source`; lookup methods for querying features by type or ML-required flag |
+
+### 5.2 Clean Coding Practices
+
+| Practice | Implementation |
+|---|---|
+| **Deferred imports** | All task callables import modules inside function bodies to keep DAG parsing fast and avoid import-time failures |
+| **Abstract base classes** | `BaseScraper` (ABC) defines the scraper interface; concrete scrapers implement `get_source_name()`, `parse_card_listing()`, `parse_card_details()` |
+| **Separation of concerns** | API client split into 4 files: `client_base` → `credit_card_bonuses_api` → `normalizer` → `schema` |
+| **Dataclasses** | `Anomaly`, `AnomalyReport`, `AnomalyConfig`, `StepAudit`, `RunAudit` use typed dataclasses |
+| **Context managers** | `BaseScraper` supports `with` statements for automatic session cleanup |
+| **Type hints** | Comprehensive type annotations throughout (`-> Path`, `Optional[float]`, `Dict[str, Any]`) |
+| **Docstrings** | All public classes and methods have detailed docstrings with parameter descriptions |
+| **Atomic writes** | `atomic_write_bytes()`, `atomic_write_text()`, `atomic_write_json()` prevent partial writes |
+| **Memory management** | `gc.collect()` after large DataFrame generation; chunked CSV writing |
+
+### 5.3 MLOps Best Practices
+
+| Practice | How It's Implemented |
+|---|---|
+| **Data versioning** | DVC tracks all raw and processed data → `gs://rewardsense-dvc-store` |
+| **Reproducibility** | Seeded synthetic data generation (`seed=42`); versioned configs in Git |
+| **Pipeline idempotency** | Checkpointing with `_DONE` sentinels; synthetic data caching |
+| **Audit trail** | SHA-256 hashes of all DataFrames, config files, and outputs in `audit.json` |
+| **Feature registry** | `FeatureMetadata` + `FeatureRegistry` Pydantic models document all features |
+| **Data quality gates** | Great Expectations suites + anomaly detection as pipeline circuit breakers |
+| **Drift detection** | Kolmogorov-Smirnov tests compare current vs. reference data distributions |
+| **Experiment tracking** | MLflow integration for model versioning (Model Registry) |
+| **Environment parity** | Docker containers (`Dockerfile.airflow`), pip constraints file |
+| **Config management** | YAML configs for every module: `transform.yaml`, `scraper_config.yaml`, `generator_config.yaml`, `alerting_config.yaml`, `anomaly_detection_config.yaml` |
+| **Monitoring** | Performance regression detection, trend dashboards, alert deduplication |
+
+---
+
+## 6. Repository Structure
+
+```
 rewardsense/
-  dags/
-    rewardsense_data_pipeline.py         # Main production DAG
-  src/
-    data_pipeline/
-      api_fetcher/                       # API clients + normalization
-      scrapers/                          # NerdWallet + issuer scrapers
-      generators/                        # Synthetic users + transactions
-      preprocessing/                     # Cleaning, features, transform, normalization
-      validation/                        # Great Expectations integration
-      profiling/                         # Profiles, stats, viz helpers, history
-      anomaly_detection/                 # Statistical + domain anomaly checks
-      monitoring/                        # Perf instrumentation, alerts, reports
-  tests/
-    dags/                                # DAG contract/integration tests
-    data_pipeline/                       # Unit tests by module
-    integration/                         # End-to-end tests
-  config/
-    *.yaml                               # Runtime configs (transform, anomaly, alerting, etc.)
-  data/
-    processed/current/                   # Current pipeline outputs (DVC tracked)
-  .github/workflows/
-    ci.yml                               # Strict CI checks
-    dvc-version-commit.yaml              # DVC metadata commit automation
-  docs/
-    gcp_setup.md
-    data_card.md
+├── dags/
+│   └── rewardsense_data_pipeline.py          # Main production DAG
+├── src/
+│   └── data_pipeline/
+│       ├── api_fetcher/                      # API clients + normalization
+│       ├── scrapers/                         # NerdWallet + issuer scrapers
+│       ├── generators/                       # Synthetic users + transactions
+│       ├── preprocessing/                    # Cleaning, features, transform, normalization
+│       ├── validation/                       # Great Expectations integration
+│       ├── profiling/                        # Profiles, stats, viz helpers, history
+│       ├── anomaly_detection/                # Statistical + domain anomaly checks
+│       └── monitoring/                       # Perf instrumentation, alerts, reports
+├── tests/
+│   ├── dags/                                 # DAG contract/integration tests
+│   ├── data_pipeline/                        # Unit tests by module
+│   ├── integration/                          # End-to-end tests
+│   └── schemas/                              # Pydantic model validation tests
+├── config/
+│   └── *.yaml                                # Runtime configs (transform, anomaly, alerting, etc.)
+├── data/
+│   └── processed/current/                    # Current pipeline outputs (DVC tracked)
+├── .github/workflows/
+│   ├── ci.yml                                # Strict CI checks
+│   └── dvc-version-commit.yaml               # DVC metadata commit automation
+└── docs/
+    ├── gcp_setup.md
+    └── data_card.md
 ```
 
 ---
 
-## 4. Environment Setup (Reproducible)
+## 7. Environment Setup
 
-These steps are designed so another engineer can clone and run without manual guesswork.
+### 7.1 Prerequisites
 
-### 4.1 Prerequisites
+Python 3.11 recommended (supported: 3.9+), Git, `pip` and `venv`. Optional but recommended: Docker Desktop (for local Airflow), Google Cloud SDK (`gcloud`, `gsutil`), DVC CLI.
 
-1. Python 3.11 recommended (supported: 3.9+).
-2. Git.
-3. `pip` and `venv`.
-4. Optional but recommended:
-   - Docker Desktop (for local Airflow)
-   - Google Cloud SDK (`gcloud`, `gsutil`)
-   - DVC CLI
-
-### 4.2 Clone and bootstrap
+### 7.2 Clone and Bootstrap
 
 ```bash
 git clone https://github.com/avadharj/rewardsense.git
@@ -121,7 +496,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-### 4.3 Install dependencies
+### 7.3 Install Dependencies
 
 For full local development + testing + quality checks:
 
@@ -136,7 +511,7 @@ If you specifically want Composer-compatible dependency parity:
 pip install -r requirements_composer.txt
 ```
 
-### 4.4 Configure environment variables
+### 7.4 Configure Environment Variables
 
 ```bash
 cp .env.example .env
@@ -144,32 +519,25 @@ cp .env.example .env
 
 Fill required values in `.env` (especially GCP/DVC/API-related values if you run cloud-backed workflows).
 
-### 4.5 GCP authentication for DVC/GCS
+### 7.5 GCP Authentication for DVC/GCS
 
 If using GCP-backed storage:
 
 ```bash
 gcloud init
 gcloud auth application-default login
-```
-
-Validate bucket access:
-
-```bash
-gsutil ls gs://rewardsense-dvc-store
+gsutil ls gs://rewardsense-dvc-store   # Validate bucket access
 ```
 
 Detailed cloud setup: `docs/gcp_setup.md`.
 
 ---
 
-## 5. Reproducibility and DVC (Critical)
+## 8. Reproducibility & DVC
 
 RewardSense uses DVC to make data artifacts reproducible across machines.
 
-### 5.1 Pull tracked data artifacts
-
-After cloning:
+### Pull Tracked Data Artifacts
 
 ```bash
 dvc pull
@@ -177,18 +545,17 @@ dvc pull
 
 This restores DVC-tracked data under `data/processed/current/*`.
 
-### 5.2 Verify DVC state
+### Verify DVC State
 
 ```bash
 dvc status
 dvc list . --dvc-only -R
 ```
 
-### 5.3 Regenerate and version new outputs
+### Regenerate and Version New Outputs
 
 ```bash
-# run pipeline (local DAG or module flow)
-# then:
+# Run pipeline (local DAG or module flow), then:
 dvc add data/processed/current/offers
 dvc add data/processed/current/synthetic
 dvc add data/processed/current/transformed
@@ -198,57 +565,48 @@ git commit -m "chore(data): update DVC tracking files"
 dvc push
 ```
 
-### 5.4 Why this guarantees reproducibility
+### Why This Guarantees Reproducibility
 
-1. `.dvc` files pin exact data content hashes.
-2. DVC remote (`gs://rewardsense-dvc-store`) stores immutable content objects.
-3. Teammates pull exact versions by checking out the same Git commit + running `dvc pull`.
+`.dvc` files pin exact data content hashes. The DVC remote (`gs://rewardsense-dvc-store`) stores immutable content objects. Teammates pull exact versions by checking out the same Git commit and running `dvc pull`.
 
 ---
 
-## 6. Running the Pipeline
+## 9. Running the Pipeline
 
-You can run RewardSense either locally (Docker Airflow) or in Cloud Composer.
+### 9.1 Local Airflow (Recommended for Development)
 
-## 6.1 Local Airflow (recommended for development)
-
-### Start Airflow
+**Start Airflow:**
 
 ```bash
 docker compose up -d airflow-postgres airflow-init
 docker compose up -d airflow-scheduler airflow-webserver
 ```
 
-Airflow UI: `http://localhost:8080`
+Airflow UI: `http://localhost:8080` — Default credentials: `admin` / `admin`
 
-Default local credentials from compose init:
-
-1. Username: `admin`
-2. Password: `admin`
-
-### Trigger DAG from CLI
+**Trigger DAG from CLI:**
 
 ```bash
 docker compose exec -T airflow-scheduler \
   airflow dags trigger rewardsense_data_pipeline
 ```
 
-### Inspect task states
+**Inspect task states:**
 
 ```bash
 docker compose exec -T airflow-scheduler \
   airflow tasks states-for-dag-run rewardsense_data_pipeline <run_id>
 ```
 
-### Convenience script
+**Convenience script:**
 
 ```bash
 bash scripts/test_airflow.sh
 ```
 
-## 6.2 Cloud Composer run/deploy
+### 9.2 Cloud Composer Deployment
 
-### Deploy DAG code
+**Deploy DAG code:**
 
 ```bash
 gcloud composer environments storage dags import \
@@ -257,7 +615,7 @@ gcloud composer environments storage dags import \
   --source=dags/rewardsense_data_pipeline.py
 ```
 
-### Deploy module updates (example)
+**Deploy module updates:**
 
 ```bash
 gcloud composer environments storage dags import \
@@ -267,7 +625,7 @@ gcloud composer environments storage dags import \
   --destination=data_pipeline
 ```
 
-### Trigger a Composer run
+**Trigger a Composer run:**
 
 ```bash
 gcloud composer environments run rewardsense-composer-env \
@@ -275,7 +633,7 @@ gcloud composer environments run rewardsense-composer-env \
   dags trigger -- rewardsense_data_pipeline --run-id manual_verify_$(date +%Y%m%d_%H%M%S)
 ```
 
-### Monitor run status
+**Monitor run status:**
 
 ```bash
 gcloud composer environments run rewardsense-composer-env \
@@ -283,188 +641,97 @@ gcloud composer environments run rewardsense-composer-env \
   tasks states-for-dag-run -- rewardsense_data_pipeline <run_id>
 ```
 
-### Verify output artifacts in Composer bucket
+**Verify output artifacts in Composer bucket:**
 
 ```bash
 gsutil ls -r 'gs://us-central1-rewardsense-com-8e7127ac-bucket/data/processed/current/**'
 ```
 
----
+### 9.3 Important Composer Runtime Notes
 
-## 7. Quality, Profiling, Anomaly, and Performance Outputs
-
-Pipeline emits operational artifacts into processed data paths.
-
-### Key locations
-
-1. Quality profiling artifacts:
-   - `data/processed/current/profiling/`
-2. Anomaly reports:
-   - `data/processed/current/anomaly_reports/`
-3. Transform outputs:
-   - `data/processed/current/transformed/<run_id>/final/*.csv`
-4. Performance metrics:
-   - `data/metrics/performance/` (local) and equivalent Composer paths
-
-### Expected anomaly files
-
-1. `credit_cards_anomaly_report.json`
-2. `transactions_anomaly_report.json`
-3. `users_anomaly_report.json`
+Composer module imports should avoid `src.` prefixes in DAG runtime code paths. The Composer data root is `/home/airflow/gcs/data/processed/current`. DAG bucket code root is under `/home/airflow/gcs/dags/`. If you update modules under `src/data_pipeline/*`, re-import them to Composer DAG storage. Composer DAG buckets may contain duplicate/stale module paths; always verify the active object path if behavior does not match local code.
 
 ---
 
-## 8. Testing Strategy (Comprehensive)
+## 10. Quality, Profiling & Anomaly Outputs
 
-The repository includes:
+Pipeline emits operational artifacts into processed data paths:
 
-1. Unit tests by module (`tests/data_pipeline/...`)
-2. DAG contract/dependency tests (`tests/dags/...`)
-3. Integration tests (`tests/integration/...`)
-4. Schema/model tests (`tests/schemas/...`)
+| Artifact Type | Location |
+|---|---|
+| Quality profiling | `data/processed/current/profiling/` |
+| Anomaly reports | `data/processed/current/anomaly_reports/` |
+| Transform outputs | `data/processed/current/transformed/<run_id>/final/*.csv` |
+| Performance metrics | `data/metrics/performance/` (local) and equivalent Composer paths |
 
-### Run all tests
+**Expected anomaly files:** `credit_cards_anomaly_report.json`, `transactions_anomaly_report.json`, `users_anomaly_report.json`.
+
+---
+
+## 11. Testing Strategy
+
+The repository includes 35+ test files covering every pipeline component across unit tests, DAG contract tests, integration tests, and schema tests.
+
+| Category | Files | What's Tested |
+|---|---|---|
+| **DAG Tests** | `test_rewardsense_data_pipeline.py` | DAG importability, task IDs, dependency graph, task group sizes |
+| **Preprocessing** | `test_cleaning.py`, `test_featureEngineering.py`, `test_normalization.py`, `test_transform.py` | Cleaning rules, feature computation, normalization, end-to-end transform |
+| **Scrapers** | `test_base_scraper.py`, `test_nerdwallet_scraper.py`, `test_issuer_scrapers.py`, `test_scrapers_init.py` | Rate limiting, retry logic, HTML parsing, error handling |
+| **API** | `tests/data_pipeline/api_fetcher/` | HTTP mocking, normalization, schema validation |
+| **Anomaly Detection** | `test_anomaly_detection_tasks.py` + `tests/data_pipeline/anomaly_detection/` | Detectors, rules, alert integration |
+| **Monitoring** | `tests/data_pipeline/monitoring/` | Alerting, metrics, callbacks, performance |
+| **Schemas** | `tests/schemas/` | Pydantic model validation, edge cases |
+| **Validation** | `test_validation.py` | Great Expectations suite execution |
+| **Integration** | `tests/integration/` | End-to-end pipeline flows |
+
+### Running Tests
 
 ```bash
-pytest
+pytest                          # Run all tests
+pytest tests/dags -v            # Run only DAG tests
+pytest -m integration -v        # Run integration tests
 ```
 
-### Run only DAG tests
+### pytest Configuration (`pytest.ini`)
 
-```bash
-pytest tests/dags -v
+```ini
+[pytest]
+testpaths = tests
+pythonpath = src
+addopts =
+    -v
+    --strict-markers
+    --cov=src
+    --cov-report=html
+    --cov-report=term-missing
+    --cov-fail-under=75
+markers =
+    slow: marks tests as slow
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
 ```
 
-### Run integration tests
+75% minimum coverage is enforced via `--cov-fail-under=75`. Strict markers prevent typos in test markers. HTML coverage reports are generated for visual inspection.
 
-```bash
-pytest -m integration -v
+---
+
+## 12. CI/CD Pipeline
+
+### CI Workflow (`.github/workflows/ci.yml`)
+
+Every push/PR to `main` and `develop` is validated across Python 3.9, 3.10, and 3.11 with Ruff for linting, Black for formatting (`--check`), Mypy for type checking (currently non-blocking), full pytest suite with coverage, and Codecov upload. Pip caching is used for faster CI runs.
+
+```
+Push/PR → Ruff Lint → Black Format → Mypy Types → Pytest + Coverage → Codecov Upload
 ```
 
-### Coverage standard
+### DVC Version Commit Automation (`.github/workflows/dvc-version-commit.yaml`)
 
-`pytest.ini` enforces:
-
-1. strict markers
-2. coverage reporting
-3. `--cov-fail-under=75`
-
-So the test suite fails if coverage drops below 75%.
+This workflow uses GitHub OIDC + GCP Workload Identity Federation (no static GCP key in GitHub) and authenticates as `rewardsense-pipeline@rewardsense.iam.gserviceaccount.com`. It runs on `repository_dispatch` from Airflow (`event_type: dvc-commit`), `workflow_dispatch` manual trigger, and `push` to `main` when DVC/data paths change (`data/**`, `dvc.lock`, `*.dvc`). It pulls/checks DVC state and commits `.dvc`/`dvc.lock` metadata updates when needed.
 
 ---
 
-## 9. CI/CD Rigor and Clean-Code Enforcement
-
-CI workflow: `.github/workflows/ci.yml`
-
-Every push/PR to `main` and `develop` is validated across Python 3.9/3.10/3.11 with:
-
-1. Ruff lint checks
-2. Black format checks (`--check`)
-3. Mypy type checks (currently non-blocking)
-4. Full pytest suite + coverage upload
-
-This is intentionally strict to prevent drift in style, correctness, and reproducibility.
-
-Data-versioning automation workflow: `.github/workflows/dvc-version-commit.yaml`
-
-1. Uses GitHub OIDC + GCP Workload Identity Federation (no static GCP key in GitHub).
-2. Authenticates as `rewardsense-pipeline@rewardsense.iam.gserviceaccount.com`.
-3. Runs on:
-   - `repository_dispatch` from Airflow (`event_type: dvc-commit`)
-   - `workflow_dispatch` manual trigger
-   - `push` to `main` when DVC/data paths change (`data/**`, `dvc.lock`, `*.dvc`)
-4. Pulls/checks DVC state and commits `.dvc`/`dvc.lock` metadata updates when needed.
-
----
-
-## 10. Data Validation and Profiling in Production Path
-
-### Schema validation (Story 6.2)
-
-`quality.validate_schema_expectations` runs Great Expectations-backed checks over:
-
-1. merged card offers
-2. synthetic transactions
-3. synthetic users
-
-Failures are logged with details; pipeline continues with warning semantics unless downstream gate policies block.
-
-### Data profiling/statistics (Story 6.3)
-
-`quality.generate_data_profiles` generates:
-
-1. dataset row/column summaries
-2. missingness statistics
-3. numeric distribution summaries
-4. historical snapshots for trend analysis
-
----
-
-## 11. Anomaly Detection and Gate Behavior
-
-Anomaly stage includes:
-
-1. statistical anomaly checks
-2. domain-rule checks
-3. alert dispatch
-4. critical gate
-
-Alerting behavior (current configuration):
-
-1. Slack: `WARNING` and `CRITICAL`
-2. Email (SendGrid): `CRITICAL` only
-3. Performance regression alerts are sent as `WARNING`
-
-Alert runtime resolution in Composer:
-
-1. Alert dispatcher reads config from `config/alerting_config.yaml` with Composer-safe path resolution.
-2. Secrets are read from environment variables first, then Airflow Variables fallback.
-3. Required keys:
-   - `SLACK_WEBHOOK_URL`
-   - `SLACK_CHANNEL`
-   - `SENDGRID_API_KEY`
-   - `ALERT_EMAIL`
-
-Recent production verification confirmed:
-
-1. `anomaly_detection.send_anomaly_alerts` sends Slack for warning/critical anomalies.
-2. Critical anomaly alerts send both Slack and email.
-3. Regression alerts are delivered via Slack.
-
-Gate control variable:
-
-1. `ANOMALY_GATE_ENFORCE=true`: blocks downstream versioning/reporting when critical anomalies are found.
-2. `ANOMALY_GATE_ENFORCE=false`: logs critical anomalies but allows continuation (useful for verification/testing runs).
-
----
-
-## 12. Performance Monitoring and Optimization
-
-Stories 9.1/9.2 are integrated through timing instrumentation and regression analysis:
-
-1. Python task timing decorators (`timed_python_task`)
-2. Run snapshots with task spans/Gantt-compatible timing
-3. Bottleneck identification and trend dashboards
-4. Regression detection against historical run medians
-
-Related module:
-
-- `src/data_pipeline/monitoring/performance.py`
-
----
-
-## 13. Important Composer Runtime Notes
-
-1. Composer module imports should avoid `src.` prefixes in DAG runtime code paths.
-2. Composer data root is `/home/airflow/gcs/data/processed/current`.
-3. DAG bucket code root is under `/home/airflow/gcs/dags/`.
-4. If you update modules under `src/data_pipeline/*`, re-import them to Composer DAG storage.
-5. Composer DAG buckets may contain duplicate/stale module paths; always verify the active object path if behavior does not match local code.
-
----
-
-## 14. Reproduce Pipeline on a New Machine (Checklist)
+## 13. Reproduce on a New Machine
 
 Use this exact sequence for a new developer machine:
 
@@ -483,64 +750,33 @@ If these steps pass, your local environment is functionally equivalent to the te
 
 ---
 
-## 15. Common Troubleshooting
+## 14. Common Troubleshooting
 
-### `ModuleNotFoundError: src`
+**`ModuleNotFoundError: src`** — Run tests from repository root and ensure editable install: `pip install -e .`
 
-Run tests from repository root and ensure editable install:
+**`ModuleNotFoundError: pkg_resources`** — Install setuptools in the active environment: `pip install setuptools`
 
-```bash
-pip install -e .
-```
+**Composer task can't find transformed/profiling/anomaly outputs** — Confirm code is deployed to the Composer DAG bucket. Confirm paths point to `/home/airflow/gcs/data/processed/current`. Verify with `gsutil ls -r` in the Composer bucket data prefix.
 
-### `ModuleNotFoundError: pkg_resources`
+**Alerts are not sent even though tasks succeed** — Confirm `config/alerting_config.yaml` exists in Composer DAG bucket. Confirm Airflow Variables (or env vars) are set: `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`, `SENDGRID_API_KEY`, `ALERT_EMAIL`. Check logs for: `Alerting config not found ...` (config path issue), `Slack enabled but SLACK_WEBHOOK_URL not set.`, or `Email enabled but ALERT_EMAIL not set.` If Composer has duplicate module objects, redeploy/overwrite the active `data_pipeline/monitoring/alerting.py` object path.
 
-Install setuptools in the active environment:
-
-```bash
-pip install setuptools
-```
-
-### Composer task can’t find transformed/profiling/anomaly outputs
-
-1. Confirm code deployed to Composer DAG bucket.
-2. Confirm paths point to `/home/airflow/gcs/data/processed/current`.
-3. Verify with `gsutil ls -r` in the Composer bucket data prefix.
-
-### Alerts are not sent even though tasks succeed
-
-1. Confirm `config/alerting_config.yaml` exists in Composer DAG bucket.
-2. Confirm Airflow Variables (or env vars) are set:
-   - `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`, `SENDGRID_API_KEY`, `ALERT_EMAIL`
-3. Check logs for:
-   - `Alerting config not found ...` (config path issue)
-   - `Slack enabled but SLACK_WEBHOOK_URL not set.`
-   - `Email enabled but ALERT_EMAIL not set.`
-4. If Composer has duplicate module objects, redeploy/overwrite the active `data_pipeline/monitoring/alerting.py` object path.
-
-### DVC push says “Everything is up to date” but no Git history update
-
-`dvc push` uploads data objects, but version history requires `.dvc` metadata commits. Ensure `.dvc` files and `dvc.lock` are committed to Git.
+**DVC push says "Everything is up to date" but no Git history update** — `dvc push` uploads data objects, but version history requires `.dvc` metadata commits. Ensure `.dvc` files and `dvc.lock` are committed to Git.
 
 ---
 
-## 16. Documentation References
+## 15. Documentation References
 
-1. Phase implementation plan: `Implementation_Phase_1.md`
-2. Product/system scope and architecture: `Scoping_doc.md`
-3. Data card: `docs/data_card.md`
-4. GCP setup details: `docs/gcp_setup.md`
+| Document | Path |
+|---|---|
+| Phase implementation plan | `Implementation_Phase_1.md` |
+| Product/system scope and architecture | `Scoping_doc.md` |
+| Data card | `docs/data_card.md` |
+| GCP setup details | `docs/gcp_setup.md` |
 
 ---
 
-## 17. License and Team
+## 16. Team
 
-Team:
-
-1. Aditya Shenoy
-2. Akhilesh Kasturi
-3. Arjun Vinay Avadhani
-4. Rahul Suresh
-5. Vidya Kalyandurg
+Aditya Shenoy · Akhilesh Kasturi · Arjun Vinay Avadhani · Rahul Suresh · Vidya Kalyandurg
 
 Repository owner and coordination: [avadharj/rewardsense](https://github.com/avadharj/rewardsense)
