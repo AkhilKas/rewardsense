@@ -99,7 +99,65 @@ services:
         echo "Airflow initialization complete."
     restart: "no"
 
+  # ============================================
+  # Model Pipeline Services (Phase 2)
+  # Use: docker compose --profile model up
+  # ============================================
+
+  mlflow-server:
+    image: python:3.9-slim
+    container_name: rewardsense-mlflow-server
+    profiles:
+      - model
+    command: >
+      bash -c "pip install --no-cache-dir mlflow>=2.10.0,<3.0.0 psycopg2-binary 2>/dev/null &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  model-training:
+    build:
+      context: .
+      dockerfile: Dockerfile.model
+    container_name: rewardsense-model-training
+    profiles:
+      - model
+    environment:
+      EXECUTION_ENV: ${EXECUTION_ENV:-local}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-rewardsense}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME:-rewardsense-dvc-store}
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - ~/.config/gcloud:/root/.config/gcloud:ro
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   airflow-postgres-data:
     name: rewardsense-airflow-pgdata
+  mlflow-data:
+    name: rewardsense-mlflow-data
     

@@ -1,0 +1,75 @@
+# ==============================================
+# RewardSense Docker Ignore
+# ==============================================
+
+# Version control
+.git/
+.github/
+.gitignore
+
+# DVC internals (data is mounted at runtime)
+.dvc/
+.dvcignore
+dvc.lock/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Linting caches
+.ruff_cache/
+
+# IDE & OS files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment & secrets
+.env
+.env.local
+
+# Logs & temporary files
+logs/
+*.log
+
+# MLflow local runs (mounted at runtime)
+mlruns/
+mlartifacts/
+
+# Jupyter notebooks
+notebooks/
+*.ipynb
+
+# Large data directories (mounted at runtime)
+data/raw/
+data/interim/
+data/.staging/
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+*.docx
+
+# Infrastructure configs (not needed in training container)
+infrastructure/
+plugins/
+
+# Airflow-specific (separate container)
+Dockerfile.airflow
+requirements-airflow.txt
+requirements_composer.txt
+dags/

@@ -1,0 +1,53 @@
+# ==============================================
+# RewardSense Model Training Environment
+# ==============================================
+# Provides a reproducible, portable container for
+# model training, evaluation, and bias detection.
+# ==============================================
+
+FROM python:3.9-slim
+
+# ---- System dependencies ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgomp1 \
+    libpq-dev \
+    curl \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Working directory ----
+WORKDIR /app
+
+# ---- Install Python dependencies ----
+COPY requirements-model.txt /tmp/requirements-model.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-model.txt \
+    && rm /tmp/requirements-model.txt
+
+# ---- Copy project source ----
+COPY setup.py ./setup.py
+COPY src/ ./src/
+COPY config/ ./config/
+
+# ---- Install project in editable mode ----
+RUN pip install --no-cache-dir -e .
+
+# ---- Environment variables ----
+# Execution environment: "local" or "gcp"
+ENV EXECUTION_ENV=local
+
+# MLflow tracking URI (overridden in docker-compose)
+ENV MLFLOW_TRACKING_URI=http://mlflow-server:5000
+
+# GCP project (overridden in docker-compose / .env)
+ENV GCP_PROJECT_ID=rewardsense
+ENV GCP_BUCKET_NAME=rewardsense-dvc-store
+
+# Python settings
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+
+# ---- Default entrypoint ----
+# Override with docker compose `command:` for different tasks
+CMD ["python", "-m", "model_pipeline.train"]
