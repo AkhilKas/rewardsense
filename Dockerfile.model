@@ -22,11 +22,13 @@ WORKDIR /app
 
 # ---- Install Python dependencies ----
 COPY requirements-model.txt /tmp/requirements-model.txt
-RUN pip install --no-cache-dir -r /tmp/requirements-model.txt \
-    && rm /tmp/requirements-model.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools && \
+    pip install --no-cache-dir -r /tmp/requirements-model.txt && \
+    rm /tmp/requirements-model.txt
 
 # ---- Copy project source ----
 COPY setup.py ./setup.py
+COPY README.md ./README.md
 COPY src/ ./src/
 COPY config/ ./config/
 
