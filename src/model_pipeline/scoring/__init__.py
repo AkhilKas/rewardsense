@@ -13,10 +13,10 @@ from .scoring_validator import ScoringValidator
 
 
 __all__ = [
-    'RewardCalculator',
-    'MerchantCategoryMapper',
-    'SpendingCapTracker',
-    'TransactionScorer',
-    'CardRanker',
-    'ScoringValidator',
+    "RewardCalculator",
+    "MerchantCategoryMapper",
+    "SpendingCapTracker",
+    "TransactionScorer",
+    "CardRanker",
+    "ScoringValidator",
 ]

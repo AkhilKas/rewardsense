@@ -26,52 +26,321 @@ logger = logging.getLogger(__name__)
 
 GOLDEN_CASES: List[Tuple[str, Dict, Dict, float]] = [
     # Base rate cards
-    ("base_1pct_100", {"card_id": "g01", "reward_rates": {"universal_base_rate": 1.0}, "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Starbucks", "mcc_code": 5812}, 1.0),
-    ("base_1.5pct_80", {"card_id": "g02", "reward_rates": {"universal_base_rate": 1.5}, "annual_fee": 0},
-     {"amount": 80.0, "category": "gas", "merchant": "Shell", "mcc_code": 5541}, 1.2),
-    ("base_2pct_250", {"card_id": "g03", "reward_rates": {"universal_base_rate": 2.0}, "annual_fee": 0},
-     {"amount": 250.0, "category": "groceries", "merchant": "Whole Foods", "mcc_code": 5411}, 5.0),
+    (
+        "base_1pct_100",
+        {
+            "card_id": "g01",
+            "reward_rates": {"universal_base_rate": 1.0},
+            "annual_fee": 0,
+        },
+        {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Starbucks",
+            "mcc_code": 5812,
+        },
+        1.0,
+    ),
+    (
+        "base_1.5pct_80",
+        {
+            "card_id": "g02",
+            "reward_rates": {"universal_base_rate": 1.5},
+            "annual_fee": 0,
+        },
+        {"amount": 80.0, "category": "gas", "merchant": "Shell", "mcc_code": 5541},
+        1.2,
+    ),
+    (
+        "base_2pct_250",
+        {
+            "card_id": "g03",
+            "reward_rates": {"universal_base_rate": 2.0},
+            "annual_fee": 0,
+        },
+        {
+            "amount": 250.0,
+            "category": "groceries",
+            "merchant": "Whole Foods",
+            "mcc_code": 5411,
+        },
+        5.0,
+    ),
     # Category bonuses
-    ("cat_3x_dining", {"card_id": "g08", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 3.0}}, "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Nobu", "mcc_code": 5812}, 3.0),
-    ("cat_4x_groceries", {"card_id": "g10", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 4.0, "groceries": 4.0}}, "annual_fee": 250},
-     {"amount": 200.0, "category": "groceries", "merchant": "Trader Joes", "mcc_code": 5411}, 8.0),
-    ("cat_5x_travel", {"card_id": "g13", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"travel": 5.0}}, "annual_fee": 0},
-     {"amount": 1000.0, "category": "travel", "merchant": "Marriott", "mcc_code": 7011}, 50.0),
-    ("cat_fallback_base", {"card_id": "g12", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 3.0}}, "annual_fee": 0},
-     {"amount": 100.0, "category": "gas", "merchant": "BP", "mcc_code": 5541}, 1.0),
+    (
+        "cat_3x_dining",
+        {
+            "card_id": "g08",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0},
+            },
+            "annual_fee": 0,
+        },
+        {"amount": 100.0, "category": "dining", "merchant": "Nobu", "mcc_code": 5812},
+        3.0,
+    ),
+    (
+        "cat_4x_groceries",
+        {
+            "card_id": "g10",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 4.0, "groceries": 4.0},
+            },
+            "annual_fee": 250,
+        },
+        {
+            "amount": 200.0,
+            "category": "groceries",
+            "merchant": "Trader Joes",
+            "mcc_code": 5411,
+        },
+        8.0,
+    ),
+    (
+        "cat_5x_travel",
+        {
+            "card_id": "g13",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"travel": 5.0},
+            },
+            "annual_fee": 0,
+        },
+        {
+            "amount": 1000.0,
+            "category": "travel",
+            "merchant": "Marriott",
+            "mcc_code": 7011,
+        },
+        50.0,
+    ),
+    (
+        "cat_fallback_base",
+        {
+            "card_id": "g12",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0},
+            },
+            "annual_fee": 0,
+        },
+        {"amount": 100.0, "category": "gas", "merchant": "BP", "mcc_code": 5541},
+        1.0,
+    ),
     # Rotating bonuses
-    ("rot_q3_active", {"card_id": "g21", "reward_rates": {"universal_base_rate": 1.0, "rotating_bonuses": {"Q3": {"categories": ["dining"], "rate": 5.0}}}, "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Chipotle", "mcc_code": 5812, "date": datetime(2025, 8, 20)}, 5.0),
-    ("rot_q1_inactive", {"card_id": "g20", "reward_rates": {"universal_base_rate": 1.0, "rotating_bonuses": {"Q1": {"categories": ["gas"], "rate": 5.0}}}, "annual_fee": 0},
-     {"amount": 40.0, "category": "gas", "merchant": "Shell", "mcc_code": 5541, "date": datetime(2025, 5, 15)}, 0.4),
+    (
+        "rot_q3_active",
+        {
+            "card_id": "g21",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "rotating_bonuses": {"Q3": {"categories": ["dining"], "rate": 5.0}},
+            },
+            "annual_fee": 0,
+        },
+        {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Chipotle",
+            "mcc_code": 5812,
+            "date": datetime(2025, 8, 20),
+        },
+        5.0,
+    ),
+    (
+        "rot_q1_inactive",
+        {
+            "card_id": "g20",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "rotating_bonuses": {"Q1": {"categories": ["gas"], "rate": 5.0}},
+            },
+            "annual_fee": 0,
+        },
+        {
+            "amount": 40.0,
+            "category": "gas",
+            "merchant": "Shell",
+            "mcc_code": 5541,
+            "date": datetime(2025, 5, 15),
+        },
+        0.4,
+    ),
     # Foreign transactions
-    ("ftf_net_negative", {"card_id": "g25", "reward_rates": {"universal_base_rate": 2.0}, "annual_fee": 0, "foreign_transaction_fee_pct": 3.0},
-     {"amount": 100.0, "category": "dining", "merchant": "Foreign", "mcc_code": 5812, "is_foreign": True}, -1.0),
-    ("ftf_no_fee", {"card_id": "g26", "reward_rates": {"universal_base_rate": 2.0}, "annual_fee": 0, "foreign_transaction_fee_pct": 0.0},
-     {"amount": 200.0, "category": "travel", "merchant": "Hotel", "mcc_code": 7011, "is_foreign": True}, 4.0),
+    (
+        "ftf_net_negative",
+        {
+            "card_id": "g25",
+            "reward_rates": {"universal_base_rate": 2.0},
+            "annual_fee": 0,
+            "foreign_transaction_fee_pct": 3.0,
+        },
+        {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Foreign",
+            "mcc_code": 5812,
+            "is_foreign": True,
+        },
+        -1.0,
+    ),
+    (
+        "ftf_no_fee",
+        {
+            "card_id": "g26",
+            "reward_rates": {"universal_base_rate": 2.0},
+            "annual_fee": 0,
+            "foreign_transaction_fee_pct": 0.0,
+        },
+        {
+            "amount": 200.0,
+            "category": "travel",
+            "merchant": "Hotel",
+            "mcc_code": 7011,
+            "is_foreign": True,
+        },
+        4.0,
+    ),
     # Edge cases
-    ("zero_amount", {"card_id": "g29", "reward_rates": {"universal_base_rate": 2.0}, "annual_fee": 0},
-     {"amount": 0.0, "category": "dining", "merchant": "Test", "mcc_code": 5812}, 0.0),
-    ("missing_rates", {"card_id": "g34", "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Test", "mcc_code": 5812}, 1.0),
+    (
+        "zero_amount",
+        {
+            "card_id": "g29",
+            "reward_rates": {"universal_base_rate": 2.0},
+            "annual_fee": 0,
+        },
+        {"amount": 0.0, "category": "dining", "merchant": "Test", "mcc_code": 5812},
+        0.0,
+    ),
+    (
+        "missing_rates",
+        {"card_id": "g34", "annual_fee": 0},
+        {"amount": 100.0, "category": "dining", "merchant": "Test", "mcc_code": 5812},
+        1.0,
+    ),
     # Real-world cards
-    ("csr_dining", {"card_id": "g38", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 3.0, "travel": 3.0}}, "annual_fee": 550},
-     {"amount": 50.0, "category": "dining", "merchant": "Restaurant", "mcc_code": 5812}, 1.5),
-    ("amex_gold_groceries", {"card_id": "g42", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 4.0, "groceries": 4.0}}, "annual_fee": 250},
-     {"amount": 95.0, "category": "groceries", "merchant": "Whole Foods", "mcc_code": 5411}, 3.8),
-    ("venture_x_travel", {"card_id": "g43", "reward_rates": {"universal_base_rate": 2.0, "category_bonuses": {"travel": 5.0}}, "annual_fee": 395},
-     {"amount": 300.0, "category": "travel", "merchant": "Hyatt", "mcc_code": 7011}, 15.0),
-    ("double_cash_general", {"card_id": "g47", "reward_rates": {"universal_base_rate": 2.0}, "annual_fee": 0},
-     {"amount": 88.0, "category": "dining", "merchant": "Panera", "mcc_code": 5812}, 1.76),
+    (
+        "csr_dining",
+        {
+            "card_id": "g38",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0, "travel": 3.0},
+            },
+            "annual_fee": 550,
+        },
+        {
+            "amount": 50.0,
+            "category": "dining",
+            "merchant": "Restaurant",
+            "mcc_code": 5812,
+        },
+        1.5,
+    ),
+    (
+        "amex_gold_groceries",
+        {
+            "card_id": "g42",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 4.0, "groceries": 4.0},
+            },
+            "annual_fee": 250,
+        },
+        {
+            "amount": 95.0,
+            "category": "groceries",
+            "merchant": "Whole Foods",
+            "mcc_code": 5411,
+        },
+        3.8,
+    ),
+    (
+        "venture_x_travel",
+        {
+            "card_id": "g43",
+            "reward_rates": {
+                "universal_base_rate": 2.0,
+                "category_bonuses": {"travel": 5.0},
+            },
+            "annual_fee": 395,
+        },
+        {"amount": 300.0, "category": "travel", "merchant": "Hyatt", "mcc_code": 7011},
+        15.0,
+    ),
+    (
+        "double_cash_general",
+        {
+            "card_id": "g47",
+            "reward_rates": {"universal_base_rate": 2.0},
+            "annual_fee": 0,
+        },
+        {"amount": 88.0, "category": "dining", "merchant": "Panera", "mcc_code": 5812},
+        1.76,
+    ),
     # Complex combos
-    ("rotating_priority", {"card_id": "g49", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 3.0}, "rotating_bonuses": {"Q1": {"categories": ["dining"], "rate": 5.0}}}, "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Place", "mcc_code": 5812, "date": datetime(2025, 2, 14)}, 5.0),
-    ("category_when_rot_inactive", {"card_id": "g50", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"dining": 3.0}, "rotating_bonuses": {"Q1": {"categories": ["dining"], "rate": 5.0}}}, "annual_fee": 0},
-     {"amount": 100.0, "category": "dining", "merchant": "Place", "mcc_code": 5812, "date": datetime(2025, 6, 14)}, 3.0),
-    ("ftf_with_bonus", {"card_id": "g51", "reward_rates": {"universal_base_rate": 1.0, "category_bonuses": {"travel": 5.0}}, "annual_fee": 0, "foreign_transaction_fee_pct": 3.0},
-     {"amount": 200.0, "category": "travel", "merchant": "Tokyo Hotel", "mcc_code": 7011, "is_foreign": True}, 4.0),
+    (
+        "rotating_priority",
+        {
+            "card_id": "g49",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0},
+                "rotating_bonuses": {"Q1": {"categories": ["dining"], "rate": 5.0}},
+            },
+            "annual_fee": 0,
+        },
+        {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Place",
+            "mcc_code": 5812,
+            "date": datetime(2025, 2, 14),
+        },
+        5.0,
+    ),
+    (
+        "category_when_rot_inactive",
+        {
+            "card_id": "g50",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0},
+                "rotating_bonuses": {"Q1": {"categories": ["dining"], "rate": 5.0}},
+            },
+            "annual_fee": 0,
+        },
+        {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Place",
+            "mcc_code": 5812,
+            "date": datetime(2025, 6, 14),
+        },
+        3.0,
+    ),
+    (
+        "ftf_with_bonus",
+        {
+            "card_id": "g51",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"travel": 5.0},
+            },
+            "annual_fee": 0,
+            "foreign_transaction_fee_pct": 3.0,
+        },
+        {
+            "amount": 200.0,
+            "category": "travel",
+            "merchant": "Tokyo Hotel",
+            "mcc_code": 7011,
+            "is_foreign": True,
+        },
+        4.0,
+    ),
 ]
 
 TOLERANCE = 1e-4
@@ -111,26 +380,29 @@ class ScoringValidator:
                     f"FAIL [{test_id}]: expected={expected:.4f}, actual={actual:.4f}"
                 )
 
-            results.append({
-                'test_id': test_id,
-                'expected': expected,
-                'actual': round(actual, 6),
-                'passed': is_pass,
-            })
+            results.append(
+                {
+                    "test_id": test_id,
+                    "expected": expected,
+                    "actual": round(actual, 6),
+                    "passed": is_pass,
+                }
+            )
 
         total = len(GOLDEN_CASES)
         accuracy = passed / total if total > 0 else 0.0
 
         return {
-            'total': total,
-            'passed': passed,
-            'failed': failed,
-            'accuracy': accuracy,
-            'details': results,
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "accuracy": accuracy,
+            "details": results,
         }
 
-    def run_throughput_benchmark(self, n_transactions: int = 5000,
-                                 n_cards: int = 5) -> Dict[str, Any]:
+    def run_throughput_benchmark(
+        self, n_transactions: int = 5000, n_cards: int = 5
+    ) -> Dict[str, Any]:
         """
         Benchmark scoring throughput.
 
@@ -141,20 +413,24 @@ class ScoringValidator:
         Returns:
             Dict with single_card_throughput, batch_throughput, latency_per_txn.
         """
-        categories = ['dining', 'travel', 'gas', 'groceries', 'utilities']
+        categories = ["dining", "travel", "gas", "groceries", "utilities"]
 
         card = {
-            'card_id': 'bench_card',
-            'reward_rates': {
-                'universal_base_rate': 1.0,
-                'category_bonuses': {'dining': 3.0, 'travel': 5.0}
+            "card_id": "bench_card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"dining": 3.0, "travel": 5.0},
             },
-            'annual_fee': 0,
+            "annual_fee": 0,
         }
 
         transactions = [
-            {'amount': 50.0 + i, 'category': categories[i % len(categories)],
-             'merchant': f'M_{i}', 'mcc_code': 5812}
+            {
+                "amount": 50.0 + i,
+                "category": categories[i % len(categories)],
+                "merchant": f"M_{i}",
+                "mcc_code": 5812,
+            }
             for i in range(n_transactions)
         ]
 
@@ -167,10 +443,15 @@ class ScoringValidator:
 
         # Batch throughput
         portfolio = [
-            {'card_id': f'card_{i}', 'card_name': f'Card {i}',
-             'reward_rates': {'universal_base_rate': 1.0 + i * 0.5,
-                              'category_bonuses': {'dining': 2.0 + i}},
-             'annual_fee': i * 100}
+            {
+                "card_id": f"card_{i}",
+                "card_name": f"Card {i}",
+                "reward_rates": {
+                    "universal_base_rate": 1.0 + i * 0.5,
+                    "category_bonuses": {"dining": 2.0 + i},
+                },
+                "annual_fee": i * 100,
+            }
             for i in range(n_cards)
         ]
 
@@ -180,12 +461,12 @@ class ScoringValidator:
         batch_throughput = n_transactions / batch_elapsed
 
         return {
-            'n_transactions': n_transactions,
-            'n_cards': n_cards,
-            'single_card_throughput': round(single_throughput, 1),
-            'batch_throughput': round(batch_throughput, 1),
-            'single_latency_ms': round((single_elapsed / n_transactions) * 1000, 4),
-            'batch_latency_ms': round((batch_elapsed / n_transactions) * 1000, 4),
+            "n_transactions": n_transactions,
+            "n_cards": n_cards,
+            "single_card_throughput": round(single_throughput, 1),
+            "batch_throughput": round(batch_throughput, 1),
+            "single_latency_ms": round((single_elapsed / n_transactions) * 1000, 4),
+            "batch_latency_ms": round((batch_elapsed / n_transactions) * 1000, 4),
         }
 
     def validate_and_log(self, log_to_mlflow: bool = True) -> Dict[str, Any]:
@@ -204,9 +485,9 @@ class ScoringValidator:
         benchmark_results = self.run_throughput_benchmark()
 
         report = {
-            'timestamp': datetime.now(tz=timezone.utc).isoformat(),
-            'golden_tests': golden_results,
-            'benchmarks': benchmark_results,
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "golden_tests": golden_results,
+            "benchmarks": benchmark_results,
         }
 
         logger.info(
@@ -232,21 +513,31 @@ class ScoringValidator:
 
             with mlflow.start_run(run_name="scoring-validation"):
                 # Golden test metrics
-                mlflow.log_metric("golden_accuracy", report['golden_tests']['accuracy'])
-                mlflow.log_metric("golden_passed", report['golden_tests']['passed'])
-                mlflow.log_metric("golden_failed", report['golden_tests']['failed'])
-                mlflow.log_metric("golden_total", report['golden_tests']['total'])
+                mlflow.log_metric("golden_accuracy", report["golden_tests"]["accuracy"])
+                mlflow.log_metric("golden_passed", report["golden_tests"]["passed"])
+                mlflow.log_metric("golden_failed", report["golden_tests"]["failed"])
+                mlflow.log_metric("golden_total", report["golden_tests"]["total"])
 
                 # Benchmark metrics
-                mlflow.log_metric("throughput_single", report['benchmarks']['single_card_throughput'])
-                mlflow.log_metric("throughput_batch", report['benchmarks']['batch_throughput'])
-                mlflow.log_metric("latency_single_ms", report['benchmarks']['single_latency_ms'])
-                mlflow.log_metric("latency_batch_ms", report['benchmarks']['batch_latency_ms'])
+                mlflow.log_metric(
+                    "throughput_single", report["benchmarks"]["single_card_throughput"]
+                )
+                mlflow.log_metric(
+                    "throughput_batch", report["benchmarks"]["batch_throughput"]
+                )
+                mlflow.log_metric(
+                    "latency_single_ms", report["benchmarks"]["single_latency_ms"]
+                )
+                mlflow.log_metric(
+                    "latency_batch_ms", report["benchmarks"]["batch_latency_ms"]
+                )
 
                 # Params
-                mlflow.log_param("n_golden_cases", report['golden_tests']['total'])
-                mlflow.log_param("n_bench_transactions", report['benchmarks']['n_transactions'])
-                mlflow.log_param("n_bench_cards", report['benchmarks']['n_cards'])
+                mlflow.log_param("n_golden_cases", report["golden_tests"]["total"])
+                mlflow.log_param(
+                    "n_bench_transactions", report["benchmarks"]["n_transactions"]
+                )
+                mlflow.log_param("n_bench_cards", report["benchmarks"]["n_cards"])
 
                 # Full report as artifact
                 report_json = json.dumps(report, indent=2, default=str)
@@ -256,14 +547,16 @@ class ScoringValidator:
 
                 # Failed cases as separate artifact if any
                 failed_cases = [
-                    d for d in report['golden_tests']['details'] if not d['passed']
+                    d for d in report["golden_tests"]["details"] if not d["passed"]
                 ]
                 if failed_cases:
                     with open("/tmp/scoring_failed_cases.json", "w") as f:
                         json.dump(failed_cases, f, indent=2)
                     mlflow.log_artifact("/tmp/scoring_failed_cases.json")
 
-            logger.info("Validation results logged to MLflow 'reward-scoring' experiment")
+            logger.info(
+                "Validation results logged to MLflow 'reward-scoring' experiment"
+            )
 
         except ImportError:
             logger.warning("MLflow not installed, skipping logging")

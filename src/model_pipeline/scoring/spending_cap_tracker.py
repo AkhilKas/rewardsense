@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class SpendingCapTracker:
     """
     Tracks spending against category caps for a given user.
-    
+
     Credit cards often cap bonus rewards (e.g., "5% on groceries up to
     $6,000/quarter"). This tracker maintains cumulative spend per
     (card, category) pair so the scoring engine knows when a cap is hit.
@@ -24,7 +24,7 @@ class SpendingCapTracker:
     def __init__(self, user_id: str):
         """
         Initialize tracker for a specific user.
-        
+
         Args:
             user_id: The user whose spending is being tracked
         """
@@ -36,14 +36,16 @@ class SpendingCapTracker:
     def record_transaction(self, card_id: str, category: str, amount: float) -> None:
         """
         Record a transaction against a card+category bucket.
-        
+
         Args:
             card_id: Credit card identifier
             category: Spending category (e.g., 'dining', 'gas')
             amount: Transaction amount in dollars
         """
         if amount < 0:
-            logger.warning(f"Negative amount {amount} for {card_id}/{category}, treating as 0")
+            logger.warning(
+                f"Negative amount {amount} for {card_id}/{category}, treating as 0"
+            )
             amount = 0.0
 
         key = (card_id, category)
@@ -53,18 +55,23 @@ class SpendingCapTracker:
             f"Cumulative: ${self._spending[key]:.2f}"
         )
 
-    def get_remaining_cap(self, card_id: str, category: str,
-                          cap: float, spent_so_far: Optional[float] = None) -> float:
+    def get_remaining_cap(
+        self,
+        card_id: str,
+        category: str,
+        cap: float,
+        spent_so_far: Optional[float] = None,
+    ) -> float:
         """
         Calculate remaining spend before a bonus cap is hit.
-        
+
         Args:
             card_id: Credit card identifier
             category: Spending category
             cap: The spending cap amount (e.g., 6000.0 for $6k quarterly cap)
             spent_so_far: If provided, use this as cumulative spend instead
                           of internal tracking. Useful when loading from external data.
-        
+
         Returns:
             Remaining dollars before cap is reached. Never negative.
         """
@@ -79,11 +86,11 @@ class SpendingCapTracker:
     def get_spent(self, card_id: str, category: str) -> float:
         """
         Get cumulative amount spent for a card+category.
-        
+
         Args:
             card_id: Credit card identifier
             category: Spending category
-        
+
         Returns:
             Cumulative spend in dollars
         """
@@ -92,21 +99,23 @@ class SpendingCapTracker:
     def is_cap_reached(self, card_id: str, category: str, cap: float) -> bool:
         """
         Check if a spending cap has been reached.
-        
+
         Args:
             card_id: Credit card identifier
             category: Spending category
             cap: The cap amount
-        
+
         Returns:
             True if cumulative spend >= cap
         """
         return self.get_spent(card_id, category) >= cap
 
-    def reset(self, card_id: Optional[str] = None, category: Optional[str] = None) -> None:
+    def reset(
+        self, card_id: Optional[str] = None, category: Optional[str] = None
+    ) -> None:
         """
         Reset tracked spending. Useful for quarterly cap resets.
-        
+
         Args:
             card_id: If provided with category, reset only that bucket.
                      If None, reset everything.
