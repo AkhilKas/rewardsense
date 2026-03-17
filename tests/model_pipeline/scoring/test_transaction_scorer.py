@@ -6,8 +6,6 @@ Covers: single card scoring, multi-card ranking, tie-breaking,
 batch scoring, and portfolio-level optimization.
 """
 
-import pytest
-from datetime import datetime
 
 
 # ── Single Card Scoring ──────────────────────────────────────────────

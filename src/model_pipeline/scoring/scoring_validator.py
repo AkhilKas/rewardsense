@@ -12,7 +12,7 @@ import logging
 import time
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple
 
 from src.model_pipeline.scoring.reward_calculator import RewardCalculator
 from src.model_pipeline.scoring.transaction_scorer import TransactionScorer

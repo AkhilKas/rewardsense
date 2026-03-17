@@ -7,7 +7,6 @@ computes metrics, benchmarks throughput, and logs to MLflow.
 File: tests/model_pipeline/scoring/test_validation_harness.py
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 

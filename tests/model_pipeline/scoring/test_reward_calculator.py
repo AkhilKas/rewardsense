@@ -5,7 +5,6 @@ Following TDD: These tests are written BEFORE implementation.
 They define the expected behavior of the reward calculation logic.
 """
 
-import pytest
 from datetime import datetime
 
 
@@ -284,7 +283,6 @@ class TestRotatingBonuses:
     def test_rotating_bonus_active_quarter(self):
         """Test rotating bonus applies in correct quarter."""
         from src.model_pipeline.scoring.reward_calculator import RewardCalculator
-        from datetime import datetime
         
         calculator = RewardCalculator()
         
@@ -320,7 +318,6 @@ class TestRotatingBonuses:
     def test_rotating_bonus_inactive_quarter(self):
         """Test rotating bonus doesn't apply in wrong quarter."""
         from src.model_pipeline.scoring.reward_calculator import RewardCalculator
-        from datetime import datetime
         
         calculator = RewardCalculator()
         
