@@ -22,6 +22,62 @@ point_valuation_model:
   
   target: point_valuation
 
+# ── Personalization Model (Epic 3, Stories 3.1–3.4) ──────────────────
+personalization:
+  target_column: estimated_point_value
+  random_seed: 42
+
+  splits:
+    train_size: 0.70
+    val_size: 0.15
+    test_size: 0.15
+    stratify_by: budget_quartile
+
+  feature_groups:
+    user_numeric:
+      - monthly_budget
+      - annual_budget
+      - num_cards
+      - monthly_budget_log
+      - age_group_ordinal
+    transaction_numeric:
+      - total_spending
+      - total_transactions
+      - avg_transaction_amount
+      - median_transaction_amount
+      - transaction_amount_std
+      - spending_diversity
+      - weekend_spending_ratio
+      - card_switch_rate
+      - num_cards_used
+      - num_unique_mccs
+      - num_unique_merchants
+      - repeat_merchant_ratio
+    onehot_prefixes:
+      - archetype_
+      - age_
+      - location_
+      - redemption_
+      - budget_
+
+  baselines:
+    - mean
+    - random_forest
+    - xgboost
+
+  tuning:
+    n_trials: 50
+    cv_folds: 5
+    metric: rmse
+    search_space:
+      max_depth: [3, 10]
+      learning_rate: [0.01, 0.3]
+      n_estimators: [50, 500]
+      min_child_weight: [1, 10]
+      gamma: [0.0, 1.0]
+      subsample: [0.6, 1.0]
+      colsample_bytree: [0.6, 1.0]
+
 # Recommendation Engine Configuration
 recommendation_engine:
   reward_calculator:

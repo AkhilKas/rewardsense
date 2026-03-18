@@ -42,6 +42,20 @@ REQUIRED_TRANSACTION_COLUMNS = [
     "category",
 ]
 
+REQUIRED_USERS_FEATURES_COLUMNS = [
+    "user_id",
+    "monthly_budget",
+    "num_cards",
+    "estimated_point_value",
+]
+
+REQUIRED_TRANSACTIONS_FEATURES_COLUMNS = [
+    "user_id",
+    "total_spending",
+    "avg_transaction_amount",
+    "spending_diversity",
+]
+
 REQUIRED_MANIFEST_KEYS = [
     "run_id",
     "sources",
@@ -186,6 +200,93 @@ class DataPipelineLoader:
             csv_path,
             required_columns=REQUIRED_CREDIT_CARD_COLUMNS,
             dataset_name="credit_cards",
+        )
+
+    def _find_latest_feature_csv(self, filename: str) -> Path:
+        """Locate the most recent ``final/<filename>`` or checkpoint fallback.
+
+        Parameters
+        ----------
+        filename : str
+            CSV filename to search for, e.g. ``users_features.csv``.
+
+        Raises
+        ------
+        DataLoadError
+            If no matching file is found in any transformed run directory.
+        """
+        transformed_root = self.data_root / "transformed"
+        if not transformed_root.exists():
+            raise DataLoadError(
+                f"Transformed data directory not found: {transformed_root}"
+            )
+
+        run_dirs = sorted(
+            (
+                p
+                for p in transformed_root.iterdir()
+                if p.is_dir() and p.name not in ("latest", "_latest")
+            ),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+
+        for run_dir in run_dirs:
+            final_csv = run_dir / "final" / filename
+            if final_csv.exists():
+                return final_csv
+            ckpt_csv = run_dir / "checkpoints" / "03_features" / filename
+            if ckpt_csv.exists():
+                return ckpt_csv
+
+        raise DataLoadError(f"No {filename} found under {transformed_root}")
+
+    # ------------------------------------------------------------------
+    #  Feature-Engineered User Profiles
+    # ------------------------------------------------------------------
+
+    def load_users_features(self) -> pd.DataFrame:
+        """Load the latest feature-engineered user profiles.
+
+        Returns
+        -------
+        pd.DataFrame
+            Users with all feature-engineered columns.
+
+        Raises
+        ------
+        DataLoadError
+            If the file is missing, empty, or missing required columns.
+        """
+        csv_path = self._find_latest_feature_csv("users_features.csv")
+        return self._load_csv(
+            csv_path,
+            required_columns=REQUIRED_USERS_FEATURES_COLUMNS,
+            dataset_name="users_features",
+        )
+
+    # ------------------------------------------------------------------
+    #  Feature-Engineered Transactions
+    # ------------------------------------------------------------------
+
+    def load_transactions_features(self) -> pd.DataFrame:
+        """Load the latest feature-engineered transaction aggregations.
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per user with aggregated transaction features.
+
+        Raises
+        ------
+        DataLoadError
+            If the file is missing, empty, or missing required columns.
+        """
+        csv_path = self._find_latest_feature_csv("transactions_features.csv")
+        return self._load_csv(
+            csv_path,
+            required_columns=REQUIRED_TRANSACTIONS_FEATURES_COLUMNS,
+            dataset_name="transactions_features",
         )
 
     # ------------------------------------------------------------------
