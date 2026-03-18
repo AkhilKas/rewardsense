@@ -178,7 +178,9 @@ class RewardSenseTracker:
         sanitized = {k: str(v)[:500] for k, v in params.items()}
         mlflow.log_params(sanitized)
 
-    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log_metrics(
+        self, metrics: Dict[str, float], step: Optional[int] = None
+    ) -> None:
         """Log a dict of metrics to the active run."""
         if not MLFLOW_AVAILABLE:
             return
@@ -210,9 +212,7 @@ class RewardSenseTracker:
         """Serialize a dict to JSON and log as an artifact."""
         if not MLFLOW_AVAILABLE:
             return
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(data, f, indent=2, default=str)
             tmp_path = f.name
         try:
@@ -224,9 +224,7 @@ class RewardSenseTracker:
         """Log a matplotlib figure as an artifact."""
         if not MLFLOW_AVAILABLE:
             return
-        with tempfile.NamedTemporaryFile(
-            suffix=".png", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             fig.savefig(f.name, dpi=150, bbox_inches="tight")
             tmp_path = f.name
         try:
@@ -249,9 +247,7 @@ class RewardSenseTracker:
             # Fallback: pickle and log as artifact
             import pickle
 
-            with tempfile.NamedTemporaryFile(
-                suffix=".pkl", delete=False
-            ) as f:
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as f:
                 pickle.dump(model, f)
                 tmp_path = f.name
             try:

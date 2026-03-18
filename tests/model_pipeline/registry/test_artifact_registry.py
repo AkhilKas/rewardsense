@@ -11,8 +11,6 @@ Tests:
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,13 +28,16 @@ from src.model_pipeline.registry.artifact_registry import (
 @pytest.fixture
 def local_registry(tmp_path):
     """Registry client with GCS disabled, local cache only."""
-    return RegistryClient(
+    client = RegistryClient(
         project="test-project",
         location="us-central1",
         repository="test-repo",
         bucket="test-bucket",
         local_cache=tmp_path / "cache",
     )
+    # Force local-only mode — prevent real GCS calls in unit tests
+    client._gcs_client = None
+    return client
 
 
 @pytest.fixture
@@ -71,7 +72,10 @@ class TestModelVersion:
 
     def test_roundtrip_serialization(self):
         mv = ModelVersion(
-            "personalization", "2.1.0", "20260318T120000", "sha256hex",
+            "personalization",
+            "2.1.0",
+            "20260318T120000",
+            "sha256hex",
             metadata={"accuracy": 0.95},
         )
         d = mv.to_dict()
@@ -106,9 +110,7 @@ class TestPush:
 
     def test_push_directory(self, local_registry, model_dir):
         """Push a model directory to local cache."""
-        mv = local_registry.push_model(
-            model_dir, model_name="llm", version="0.1.0"
-        )
+        local_registry.push_model(model_dir, model_name="llm", version="0.1.0")
         cached = local_registry.local_cache / "llm" / "v0.1.0"
         assert (cached / "model.bin").exists()
         assert (cached / "config.json").exists()
@@ -133,9 +135,7 @@ class TestPush:
         )
         assert mv.metadata["ndcg_5"] == 0.85
 
-        manifest = (
-            local_registry.local_cache / "scoring" / "v1.0.0" / "manifest.json"
-        )
+        manifest = local_registry.local_cache / "scoring" / "v1.0.0" / "manifest.json"
         data = json.loads(manifest.read_text())
         assert data["metadata"]["ndcg_5"] == 0.85
 

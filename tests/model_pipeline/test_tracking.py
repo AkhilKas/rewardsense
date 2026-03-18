@@ -10,9 +10,7 @@ Tests:
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,8 +22,9 @@ import pytest
 @pytest.fixture
 def mock_mlflow():
     """Patch mlflow and MlflowClient for isolated testing."""
-    with patch.dict("sys.modules", {"mlflow": MagicMock(), "mlflow.tracking": MagicMock()}):
-        import importlib
+    with patch.dict(
+        "sys.modules", {"mlflow": MagicMock(), "mlflow.tracking": MagicMock()}
+    ):
         import src.model_pipeline.tracking as tracking_mod
 
         tracking_mod.MLFLOW_AVAILABLE = True

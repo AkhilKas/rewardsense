@@ -97,8 +97,7 @@ class ModelVersion:
 
 
 class RegistryClient:
-    """
-    GCP Artifact Registry client for model versioning.
+    """GCP Artifact Registry client for model versioning.
 
     Uses GCS as the backing store for generic model artifacts.
     Each model is stored as:
@@ -218,8 +217,13 @@ class RegistryClient:
             if local_path.is_file():
                 blob = bucket.blob(f"{prefix}/{local_path.name}")
                 blob.upload_from_filename(str(local_path))
-                logger.info("Uploaded %s → gs://%s/%s/%s",
-                            local_path.name, self.bucket_name, prefix, local_path.name)
+                logger.info(
+                    "Uploaded %s → gs://%s/%s/%s",
+                    local_path.name,
+                    self.bucket_name,
+                    prefix,
+                    local_path.name,
+                )
             else:
                 for f in local_path.rglob("*"):
                     if f.is_file():
@@ -301,7 +305,7 @@ class RegistryClient:
             )
 
         for blob in blobs:
-            rel = blob.name[len(prefix):]
+            rel = blob.name[len(prefix) :]
             if not rel:
                 continue
             local_file = cache_dir / rel
@@ -346,7 +350,7 @@ class RegistryClient:
                             data = json.loads(manifest_blob.download_as_text())
                             versions.append(ModelVersion.from_dict(data))
 
-        versions.sort(key=lambda v: v.timestamp, reverse=True)
+        versions.sort(key=lambda v: (v.timestamp, v.version), reverse=True)
         return versions
 
     def get_latest_version(self, model_name: str) -> Optional[ModelVersion]:
