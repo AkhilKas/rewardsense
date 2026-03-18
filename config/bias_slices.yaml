@@ -1,0 +1,50 @@
+# Bias Slicing Configuration
+# Defines slicing dimensions for model-level bias detection.
+#
+# Each dimension specifies:
+#   - column: the DataFrame column to slice on
+#   - type: "categorical" or "quantile"
+#   - n_quantiles: (quantile only) number of bins
+#   - labels: (quantile only) human-readable bin names
+
+disparity_threshold: 0.10  # Flag slices with >10% deviation from overall
+
+slicing_dimensions:
+  # --- Behavioral slices ---
+  spending_tier:
+    column: monthly_budget
+    type: quantile
+    n_quantiles: 4
+    labels: ["low_spend", "mid_low_spend", "mid_high_spend", "high_spend"]
+
+  card_portfolio_size:
+    column: num_cards
+    type: categorical
+
+  primary_spending_category:
+    column: top_category
+    type: categorical
+
+  spending_archetype:
+    column: archetype
+    type: categorical
+
+  # --- Demographic slices (from synthetic data) ---
+  age_group:
+    column: age_group
+    type: categorical
+
+  location_type:
+    column: location_type
+    type: categorical
+
+  # --- Reward-specific slices ---
+  redemption_preference:
+    column: redemption_preference
+    type: categorical
+
+  transaction_volume_tier:
+    column: total_transactions
+    type: quantile
+    n_quantiles: 3
+    labels: ["low_volume", "mid_volume", "high_volume"]
