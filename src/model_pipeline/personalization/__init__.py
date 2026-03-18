@@ -1,8 +1,9 @@
 """
-RewardSense Personalization Model Package (Epic 3, Stories 3.1–3.4).
+RewardSense Personalization Model Package (Epic 3 & 5).
 
 Provides feature engineering, model training, hyperparameter tuning,
-and holdout validation for the credit-card point-valuation regression model.
+holdout validation, and sensitivity analysis for the credit-card
+point-valuation regression model.
 """
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "trainer",
     "tuning",
     "validation",
+    "sensitivity",
 ]
