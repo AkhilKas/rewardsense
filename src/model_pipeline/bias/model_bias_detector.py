@@ -30,6 +30,17 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+def plt_close(fig: Any) -> None:
+    """Close a matplotlib figure, handling missing import."""
+    try:
+        import matplotlib.pyplot as _plt
+
+        _plt.close(fig)
+    except ImportError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Lazy Fairlearn import
 # ---------------------------------------------------------------------------
@@ -131,7 +142,13 @@ class ModelBiasReport:
         }
 
     def log_to_mlflow(self, tracker: Any) -> None:
-        """Log bias report to MLflow via RewardSenseTracker."""
+        """
+        Log bias report to MLflow via RewardSenseTracker.
+
+        Logs JSON report + matplotlib/seaborn visualizations:
+          - Bias summary chart (metric values vs thresholds)
+          - Per-group fairness breakdown (if Fairlearn ran)
+        """
         if tracker is None:
             return
         # Log summary metrics
@@ -148,6 +165,37 @@ class ModelBiasReport:
         # Log full report as artifact
         tracker.log_dict(self.to_dict(), f"bias_report_{self.model_name}.json")
 
+        # --- Visualizations ---
+        try:
+            from src.model_pipeline.bias.visualizations import (
+                plot_bias_summary,
+                plot_fairness_metrics,
+            )
+
+            # Bias summary: all metrics vs thresholds
+            all_metrics_dicts = [
+                {
+                    "name": m.name,
+                    "sensitive_feature": m.sensitive_feature,
+                    "value": m.value,
+                    "threshold": m.threshold,
+                    "is_biased": m.is_biased,
+                }
+                for m in self.metrics
+            ]
+            if all_metrics_dicts:
+                fig = plot_bias_summary(all_metrics_dicts)
+                tracker.log_figure(fig, f"bias_summary_{self.model_name}.png")
+                plt_close(fig)
+
+            # Per-group fairness breakdown
+            if self.per_group_metrics:
+                fig = plot_fairness_metrics(self.per_group_metrics)
+                tracker.log_figure(fig, f"fairness_groups_{self.model_name}.png")
+                plt_close(fig)
+        except ImportError:
+            pass  # matplotlib not installed — skip visualizations
+
 
 # =====================================================================
 # ModelBiasDetector
@@ -155,7 +203,8 @@ class ModelBiasReport:
 
 
 class ModelBiasDetector:
-    """Detect bias in model predictions using Fairlearn + custom metrics.
+    """
+    Detect bias in model predictions using Fairlearn + custom metrics.
 
     Parameters
     ----------
@@ -186,7 +235,8 @@ class ModelBiasDetector:
         sensitive_features: Union[np.ndarray, pd.Series, pd.DataFrame],
         model_name: str = "personalization",
     ) -> ModelBiasReport:
-        """Run full bias detection on model predictions.
+        """
+        Run full bias detection on model predictions.
 
         Parameters
         ----------

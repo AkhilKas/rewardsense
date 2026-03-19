@@ -79,7 +79,13 @@ class ComponentBiasReport:
         }
 
     def log_to_mlflow(self, tracker: Any) -> None:
-        """Log to MLflow via RewardSenseTracker."""
+        """
+        Log to MLflow via RewardSenseTracker.
+
+        Logs JSON report + matplotlib/seaborn visualizations:
+          - Issuer distribution chart (scoring engine)
+          - Explanation quality chart (LLM)
+        """
         if tracker is None:
             return
         tracker.log_metrics(
@@ -89,6 +95,35 @@ class ComponentBiasReport:
             }
         )
         tracker.log_dict(self.to_dict(), f"bias_{self.component}.json")
+
+        # --- Visualizations ---
+        try:
+            from src.model_pipeline.bias.visualizations import (
+                plot_issuer_distribution,
+                plot_explanation_quality,
+            )
+            import matplotlib.pyplot as _plt
+
+            metrics_dicts = [
+                {
+                    "check": m.check_name,
+                    "check_name": m.check_name,
+                    "details": m.details,
+                }
+                for m in self.metrics
+            ]
+
+            if self.component == "scoring_engine" and metrics_dicts:
+                fig = plot_issuer_distribution(metrics_dicts)
+                tracker.log_figure(fig, f"issuer_distribution_{self.component}.png")
+                _plt.close(fig)
+
+            if self.component == "llm_explainability" and metrics_dicts:
+                fig = plot_explanation_quality(metrics_dicts)
+                tracker.log_figure(fig, f"explanation_quality_{self.component}.png")
+                _plt.close(fig)
+        except ImportError:
+            pass  # matplotlib not installed — skip visualizations
 
 
 # =====================================================================
