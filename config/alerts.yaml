@@ -1,0 +1,16 @@
+# Alert thresholds for model performance degradation
+thresholds:
+  ndcg_decline: 0.05
+  rmse_increase: 0.05
+  latency_increase_ms: 500
+
+# Alerting destinations
+slack:
+  webhook_env_var: "SLACK_WEBHOOK_URL"
+  enabled: true
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 465
+  from_address: "alerts@rewardsense.internal"
+  enabled: false
