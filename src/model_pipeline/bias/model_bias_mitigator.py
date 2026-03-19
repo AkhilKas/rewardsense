@@ -272,7 +272,8 @@ class ModelBiasMitigator:
         """
         Compute inverse-frequency sample weights for fair training.
 
-        Reuses the BiasMitigator concept but returns weights directly for model training integration.
+        Reuses the Phase 1 BiasMitigator concept but returns weights
+        directly for model training integration.
         """
         sf = pd.Series(sensitive_features)
         group_counts = sf.value_counts()
@@ -402,6 +403,8 @@ class ModelBiasMitigator:
         """
         Log before/after bias comparison to MLflow.
 
+        Logs JSON comparison + matplotlib before/after bar chart.
+
         Parameters
         ----------
         tracker : RewardSenseTracker
@@ -428,7 +431,6 @@ class ModelBiasMitigator:
             ),
         }
 
-        # Compute improvement summary
         before_biased = (
             len(before_report.biased_metrics)
             if hasattr(before_report, "biased_metrics")
@@ -449,3 +451,42 @@ class ModelBiasMitigator:
         )
 
         tracker.log_dict(comparison, f"mitigation_comparison_{strategy_name}.json")
+
+        # --- Visualizations ---
+        try:
+            from src.model_pipeline.bias.visualizations import (
+                plot_mitigation_comparison,
+            )
+            import matplotlib.pyplot as _plt
+
+            # Build metric dicts from reports
+            before_metrics: Dict[str, float] = {}
+            after_metrics: Dict[str, float] = {}
+
+            if hasattr(before_report, "metrics"):
+                for m in before_report.metrics:
+                    key = (
+                        f"{m.name}_{m.sensitive_feature}"
+                        if hasattr(m, "sensitive_feature")
+                        else m.name
+                    )
+                    before_metrics[key] = m.value
+            if hasattr(after_report, "metrics"):
+                for m in after_report.metrics:
+                    key = (
+                        f"{m.name}_{m.sensitive_feature}"
+                        if hasattr(m, "sensitive_feature")
+                        else m.name
+                    )
+                    after_metrics[key] = m.value
+
+            if before_metrics or after_metrics:
+                fig = plot_mitigation_comparison(
+                    before_metrics,
+                    after_metrics,
+                    title=f"Mitigation: {strategy_name} — Before vs After",
+                )
+                tracker.log_figure(fig, f"mitigation_{strategy_name}.png")
+                _plt.close(fig)
+        except ImportError:
+            pass  # matplotlib not installed
