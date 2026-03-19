@@ -38,6 +38,16 @@ from src.model_pipeline.bias.model_bias_mitigator import (
     ModelBiasMitigator,
     MitigationResult,
 )
+from src.model_pipeline.bias.visualizations import (
+    plot_slice_metrics,
+    plot_disparity_heatmap,
+    plot_fairness_metrics,
+    plot_bias_summary,
+    plot_issuer_distribution,
+    plot_explanation_quality,
+    plot_mitigation_comparison,
+    plot_group_metric_comparison,
+)
 
 
 # =====================================================================
@@ -293,7 +303,6 @@ class TestModelBiasDetector:
         detector = ModelBiasDetector(config=ModelBiasConfig(min_slice_size=5))
         report = detector.detect(yt, yp, groups)
         # performance_disparity should skip group B (size=1 < min=5)
-        # Verify check completed without error (small group skipped internally)
         # The check should still complete without error
         assert isinstance(report, ModelBiasReport)
 
@@ -306,17 +315,19 @@ class TestModelBiasDetector:
 class TestScoringBiasChecker:
     @pytest.fixture
     def recommendations_df(self):
+        rng = np.random.default_rng(42)
+        n = 300
         return pd.DataFrame(
             {
-                "user_id": range(300),
+                "user_id": range(n),
                 "spending_archetype": (
                     ["young_professional"] * 150 + ["suburban_family"] * 150
                 ),
-                "recommended_card_issuer": np.random.default_rng(42).choice(
-                    ["Chase", "Amex", "Capital One"], 300, p=[0.5, 0.3, 0.2]
+                "recommended_card_issuer": rng.choice(
+                    ["Chase", "Amex", "Capital One"], n, p=[0.5, 0.3, 0.2]
                 ),
-                "recommended_card_type": np.random.default_rng(42).choice(
-                    ["premium", "standard"], 300, p=[0.4, 0.6]
+                "recommended_card_type": rng.choice(
+                    ["premium", "standard"], n, p=[0.4, 0.6]
                 ),
             }
         )
@@ -530,3 +541,215 @@ class TestModelBiasMitigator:
             assert "error" in result.trade_offs
         finally:
             mod.FAIRLEARN_REDUCTIONS_AVAILABLE = original
+
+
+# =====================================================================
+# Visualizations
+# =====================================================================
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as _plt
+
+    HAS_MPL = True
+except ImportError:
+    HAS_MPL = False
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+class TestVisualizationsSlice:
+    """Test Story 6.1 visualizations."""
+
+    def test_plot_slice_metrics_returns_figure(self):
+        slices = [
+            {"name": "Q1", "metrics": {"ndcg_5": 0.7, "precision_5": 0.6}},
+            {"name": "Q2", "metrics": {"ndcg_5": 0.8, "precision_5": 0.75}},
+            {"name": "Q3", "metrics": {"ndcg_5": 0.85, "precision_5": 0.8}},
+        ]
+        fig = plot_slice_metrics(slices, metrics=("ndcg_5", "precision_5"))
+        assert fig is not None
+        assert hasattr(fig, "savefig")
+        _plt.close(fig)
+
+    def test_plot_slice_metrics_with_overall(self):
+        slices = [
+            {"name": "A", "metrics": {"ndcg_5": 0.7}},
+            {"name": "B", "metrics": {"ndcg_5": 0.9}},
+        ]
+        fig = plot_slice_metrics(
+            slices,
+            metrics=("ndcg_5",),
+            overall={"ndcg_5": 0.8},
+        )
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_disparity_heatmap(self):
+        slices = [
+            {"name": "low", "metrics": {"ndcg_5": 0.6, "precision_5": 0.5}},
+            {"name": "high", "metrics": {"ndcg_5": 0.9, "precision_5": 0.85}},
+        ]
+        overall = {"ndcg_5": 0.75, "precision_5": 0.7}
+        fig = plot_disparity_heatmap(slices, overall)
+        assert fig is not None
+        _plt.close(fig)
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+class TestVisualizationsFairness:
+    """Test Story 6.2 visualizations."""
+
+    def test_plot_fairness_metrics(self):
+        per_group = {
+            "archetype": {"young_prof": 0.82, "family": 0.78, "traveler": 0.85},
+        }
+        fig = plot_fairness_metrics(per_group)
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_bias_summary(self):
+        metrics = [
+            {
+                "name": "dem_parity",
+                "sensitive_feature": "arch",
+                "value": 0.12,
+                "threshold": 0.10,
+                "is_biased": True,
+            },
+            {
+                "name": "eq_odds",
+                "sensitive_feature": "arch",
+                "value": 0.05,
+                "threshold": 0.10,
+                "is_biased": False,
+            },
+        ]
+        fig = plot_bias_summary(metrics)
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_bias_summary_empty(self):
+        fig = plot_bias_summary([])
+        assert fig is not None
+        _plt.close(fig)
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+class TestVisualizationsComponent:
+    """Test Story 6.3 visualizations."""
+
+    def test_plot_issuer_distribution(self):
+        metrics = [
+            {
+                "check": "issuer_Chase",
+                "details": {
+                    "issuer": "Chase",
+                    "per_group_rates": {"young_prof": 0.6, "family": 0.4},
+                },
+            },
+            {
+                "check": "issuer_Amex",
+                "details": {
+                    "issuer": "Amex",
+                    "per_group_rates": {"young_prof": 0.3, "family": 0.5},
+                },
+            },
+        ]
+        fig = plot_issuer_distribution(metrics)
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_issuer_distribution_empty(self):
+        fig = plot_issuer_distribution([])
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_explanation_quality(self):
+        metrics = [
+            {
+                "check_name": "explanation_length",
+                "details": {
+                    "overall_mean_length": 120,
+                    "per_group_mean_length": {"young_prof": 150, "family": 90},
+                },
+            },
+        ]
+        fig = plot_explanation_quality(metrics)
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_explanation_quality_empty(self):
+        fig = plot_explanation_quality([])
+        assert fig is not None
+        _plt.close(fig)
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+class TestVisualizationsMitigation:
+    """Test Story 6.4 visualizations."""
+
+    def test_plot_mitigation_comparison(self):
+        before = {"dem_parity": 0.15, "eq_odds": 0.12, "accuracy": 0.85}
+        after = {"dem_parity": 0.08, "eq_odds": 0.06, "accuracy": 0.83}
+        fig = plot_mitigation_comparison(before, after)
+        assert fig is not None
+        _plt.close(fig)
+
+    def test_plot_group_metric_comparison(self):
+        before = {"A": 0.90, "B": 0.70}
+        after = {"A": 0.85, "B": 0.82}
+        fig = plot_group_metric_comparison(before, after, metric_name="accuracy")
+        assert fig is not None
+        _plt.close(fig)
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+class TestLogToMlflowWithViz:
+    """Test that log_to_mlflow calls produce figures."""
+
+    def test_model_bias_report_logs_figures(self, sample_data):
+        df, yt, yp = sample_data
+        detector = ModelBiasDetector()
+        report = detector.detect(yt, yp, df["archetype"])
+        mock_tracker = MagicMock()
+        report.log_to_mlflow(mock_tracker)
+        # Should have at least: log_metrics, log_dict, log_figure calls
+        assert mock_tracker.log_metrics.called
+        assert mock_tracker.log_dict.called
+        assert mock_tracker.log_figure.called
+
+    def test_slice_report_logs_figures(self, sample_data):
+        df, yt, yp = sample_data
+        evaluator = SliceEvaluator(
+            slicing_config={
+                "archetype": {"column": "archetype", "type": "categorical"},
+            },
+        )
+        report = evaluator.evaluate(df, yt, yp)
+        mock_tracker = MagicMock()
+        report.log_to_mlflow(mock_tracker)
+        assert mock_tracker.log_figure.called
+
+    def test_component_report_logs_figures(self):
+        from src.model_pipeline.bias.component_bias import ComponentBiasMetric
+
+        report = ComponentBiasReport(component="scoring_engine")
+        report.metrics.append(
+            ComponentBiasMetric(
+                component="scoring_engine",
+                check_name="issuer_disparity_Chase",
+                sensitive_feature="archetype",
+                value=0.20,
+                threshold=0.15,
+                is_biased=True,
+                details={
+                    "issuer": "Chase",
+                    "per_group_rates": {"A": 0.7, "B": 0.5},
+                },
+            )
+        )
+        mock_tracker = MagicMock()
+        report.log_to_mlflow(mock_tracker)
+        assert mock_tracker.log_figure.called

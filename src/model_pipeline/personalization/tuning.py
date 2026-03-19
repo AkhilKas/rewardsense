@@ -198,6 +198,55 @@ class HyperparameterTuner:
             return pd.DataFrame()
         return self.study.trials_dataframe()
 
+    def compute_param_importances(self) -> Dict[str, float]:
+        """Compute hyperparameter importances using Optuna's fANOVA.
+
+        Requires ``tune()`` to have been called first so that the study
+        contains completed trials.
+
+        Returns
+        -------
+        dict mapping parameter name → importance score (0–1, summing to 1).
+        """
+        if self.study is None:
+            raise RuntimeError("Must call tune() before compute_param_importances()")
+
+        import optuna
+
+        importances = optuna.importance.get_param_importances(self.study)
+        logger.info("Optuna HP importances: {}", importances)
+
+        if self.use_mlflow:
+            self._log_param_importances(importances)
+
+        return importances
+
+    def _log_param_importances(self, importances: Dict[str, float]) -> None:
+        """Log parameter importances as a JSON artifact to MLflow."""
+        try:
+            import json
+            import tempfile
+
+            import mlflow
+
+            mlflow.set_experiment(self.experiment_name)
+            with mlflow.start_run(run_name="hp_importance_analysis", nested=True):
+                mlflow.log_metrics(
+                    {f"importance_{k}": v for k, v in importances.items()}
+                )
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                ) as f:
+                    json.dump(importances, f, indent=2)
+                    tmp_path = f.name
+                mlflow.log_artifact(tmp_path)
+                import os
+
+                os.unlink(tmp_path)
+            logger.info("Logged HP importances to MLflow")
+        except Exception as exc:
+            logger.debug("MLflow HP importance logging failed: {}", exc)
+
     def _log_trial(self, trial_number: int, params: Dict, cv_rmse: float) -> None:
         """Log a single trial to MLflow (nested run)."""
         try:

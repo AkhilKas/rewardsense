@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 import yaml
 from loguru import logger
@@ -39,6 +40,10 @@ TRANSACTION_NUMERIC_FEATURES: List[str] = [
     "num_unique_mccs",
     "num_unique_merchants",
     "repeat_merchant_ratio",
+    "peak_spending_day",
+    "peak_spending_month",
+    "spending_velocity",
+    "category_affinity_score",
 ]
 
 # ── One-hot-encoded prefixes (auto-detected from columns) ────────────
@@ -78,6 +83,50 @@ def get_feature_columns(df: pd.DataFrame) -> List[str]:
     numeric_set = set(present_numeric)
     onehot = [c for c in detect_onehot_columns(df) if c not in numeric_set]
     return present_numeric + onehot
+
+
+def compute_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute derived features not present in Phase 1 outputs.
+
+    Adds the following columns in-place (if missing):
+    - ``spending_velocity``: coefficient of variation of transaction amounts
+      (std / mean), capturing how erratic a user's spending is over time.
+    - ``category_affinity_score``: normalised spending diversity (entropy
+      divided by log2 of number of spending categories), measuring how
+      concentrated a user's spend is across categories.  1.0 = uniform,
+      closer to 0 = highly concentrated.
+    - ``peak_spending_day`` / ``peak_spending_month``: carried from Phase 1
+      temporal features if present, otherwise defaults to 0.
+    """
+    df = df.copy()
+
+    if "spending_velocity" not in df.columns:
+        avg = df.get("avg_transaction_amount")
+        std = df.get("transaction_amount_std")
+        if avg is not None and std is not None:
+            safe_avg = avg.replace(0, np.nan)
+            df["spending_velocity"] = (std / safe_avg).fillna(0.0).round(4)
+        else:
+            df["spending_velocity"] = 0.0
+        logger.info("Computed spending_velocity for {} rows", len(df))
+
+    if "category_affinity_score" not in df.columns:
+        diversity = df.get("spending_diversity")
+        if diversity is not None:
+            max_entropy = np.log2(7)  # 7 standard spending categories
+            df["category_affinity_score"] = (
+                (diversity / max_entropy).clip(0, 1).fillna(0.0).round(4)
+            )
+        else:
+            df["category_affinity_score"] = 0.0
+        logger.info("Computed category_affinity_score for {} rows", len(df))
+
+    for col in ("peak_spending_day", "peak_spending_month"):
+        if col not in df.columns:
+            df[col] = 0
+            logger.debug("Defaulted {} to 0 (not in source data)", col)
+
+    return df
 
 
 def load_feature_config(config_path: str) -> Dict:

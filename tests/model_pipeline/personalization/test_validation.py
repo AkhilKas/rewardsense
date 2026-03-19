@@ -83,3 +83,33 @@ class TestHoldoutValidator:
         assert "passed" in d
         assert "test_metrics" in d
         assert "timestamp" in d
+
+    def test_validation_plots_generated(self, trained_setup, tmp_path):
+        model, split, val_metrics = trained_setup
+        validator = HoldoutValidator(
+            model=model,
+            split=split,
+            val_metrics=val_metrics,
+            rmse_threshold=1.0,
+            r2_threshold=-10.0,
+            artifact_dir=str(tmp_path),
+        )
+        plots = validator.generate_validation_plots()
+        assert "pred_vs_actual" in plots
+        assert "residual_histogram" in plots
+        assert plots["pred_vs_actual"].exists()
+        assert plots["residual_histogram"].exists()
+
+    def test_validate_also_creates_plots(self, trained_setup, tmp_path):
+        model, split, val_metrics = trained_setup
+        validator = HoldoutValidator(
+            model=model,
+            split=split,
+            val_metrics=val_metrics,
+            rmse_threshold=1.0,
+            r2_threshold=-10.0,
+            artifact_dir=str(tmp_path),
+        )
+        validator.validate()
+        assert (tmp_path / "pred_vs_actual.png").exists()
+        assert (tmp_path / "residual_histogram.png").exists()

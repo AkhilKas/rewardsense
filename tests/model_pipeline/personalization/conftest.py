@@ -85,8 +85,19 @@ def transactions_features_df() -> pd.DataFrame:
         "num_unique_mccs": rng.randint(3, 30, n),
         "num_unique_merchants": rng.randint(5, 50, n),
         "repeat_merchant_ratio": rng.uniform(0.1, 0.9, n).round(4),
+        "peak_spending_day": rng.randint(0, 7, n).astype(float),
+        "peak_spending_month": rng.randint(1, 13, n).astype(float),
     }
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    safe_avg = df["avg_transaction_amount"].replace(0, np.nan)
+    df["spending_velocity"] = (
+        (df["transaction_amount_std"] / safe_avg).fillna(0.0).round(4)
+    )
+    max_entropy = np.log2(7)
+    df["category_affinity_score"] = (
+        (df["spending_diversity"] / max_entropy).clip(0, 1).fillna(0.0).round(4)
+    )
+    return df
 
 
 @pytest.fixture()

@@ -89,6 +89,55 @@ class SliceEvaluationReport:
             "summary": self.summary,
         }
 
+    def log_to_mlflow(self, tracker: Any) -> None:
+        """
+        Log slice evaluation to MLflow with JSON + visualizations.
+
+        Charts logged:
+          - Per-slice metric grouped bar chart
+          - Disparity heatmap (metric × slice)
+        """
+        if tracker is None:
+            return
+
+        tracker.log_dict(self.to_dict(), "slice_evaluation_report.json")
+        tracker.log_metrics(
+            {f"slice_overall_{k}": v for k, v in self.overall_metrics.items()}
+        )
+        tracker.log_metrics(
+            {
+                "slice_total": len(self.slices),
+                "slice_disparities": len(self.disparities),
+            }
+        )
+
+        try:
+            from src.model_pipeline.bias.visualizations import (
+                plot_slice_metrics,
+                plot_disparity_heatmap,
+            )
+            import matplotlib.pyplot as _plt
+
+            slices_dicts = [{"name": s.name, "metrics": s.metrics} for s in self.slices]
+
+            if slices_dicts:
+                fig = plot_slice_metrics(
+                    slices_dicts,
+                    overall=self.overall_metrics,
+                )
+                tracker.log_figure(fig, "slice_metrics.png")
+                _plt.close(fig)
+
+            if slices_dicts and self.overall_metrics:
+                fig = plot_disparity_heatmap(
+                    slices_dicts,
+                    overall=self.overall_metrics,
+                )
+                tracker.log_figure(fig, "slice_disparity_heatmap.png")
+                _plt.close(fig)
+        except ImportError:
+            pass  # matplotlib not installed
+
 
 # =====================================================================
 # Built-in recommendation metrics
@@ -96,7 +145,8 @@ class SliceEvaluationReport:
 
 
 def ndcg_at_k(y_true: np.ndarray, y_pred: np.ndarray, k: int = 5) -> float:
-    """Compute NDCG@K for a single user's ranked list.
+    """
+    Compute NDCG@K for a single user's ranked list.
 
     Parameters
     ----------
@@ -170,7 +220,8 @@ DEFAULT_METRICS: Dict[str, Callable] = {
 
 
 class SliceEvaluator:
-    """Evaluates model metrics across data slices for bias detection.
+    """
+    Evaluates model metrics across data slices for bias detection.
 
     Extends Phase 1's DataSlicer concept for model predictions.
     Computes per-slice metrics and flags disparities exceeding thresholds.
@@ -265,7 +316,8 @@ class SliceEvaluator:
         y_pred: np.ndarray,
         sensitive_features: Optional[List[str]] = None,
     ) -> SliceEvaluationReport:
-        """Run per-slice evaluation across all configured dimensions.
+        """
+        Run per-slice evaluation across all configured dimensions.
 
         Parameters
         ----------
