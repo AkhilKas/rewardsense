@@ -28,6 +28,7 @@ The platform collects card-offer data from multiple sources, generates synthetic
 14. [Common Troubleshooting](#14-common-troubleshooting)
 15. [Documentation References](#15-documentation-references)
 16. [Team](#16-team)
+17. [API Serving](#17-api-serving)
 
 ---
 
@@ -780,3 +781,86 @@ If these steps pass, your local environment is functionally equivalent to the te
 Aditya Shenoy · Akhilesh Kasturi · Arjun Vinay Avadhani · Rahul Suresh · Vidya Kalyandurg
 
 Repository owner and coordination: [avadharj/rewardsense](https://github.com/avadharj/rewardsense)
+
+---
+
+## 17. API Serving
+
+RewardSense now includes a FastAPI serving layer in `src/app/server.py` with:
+
+- `GET /health`
+- `POST /recommend`
+
+The `/recommend` endpoint uses strict Pydantic request/response schemas, so downstream consumers get a stable contract.
+
+### 17.1 Run Locally (No LLM Explanations)
+
+```bash
+export PYTHONPATH=.
+export ENABLE_LLM_EXPLANATIONS=false
+uvicorn src.app.server:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+### 17.2 Run with Gemini Explanations (Vertex AI)
+
+```bash
+export PYTHONPATH=.
+export ENABLE_LLM_EXPLANATIONS=true
+export GCP_PROJECT_ID=<your-project-id>
+export VERTEX_LOCATION=us-central1
+export LLM_MODEL=gemini-2.5-flash
+export LLM_TEMPERATURE=0.2
+export LLM_TIMEOUT_SEC=10
+export MLFLOW_TRACKING_URI=http://localhost:5000
+uvicorn src.app.server:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+When explanations are enabled, the service logs:
+
+- MLflow metrics and params to `llm-explainability`
+- Full explanation payload JSON artifacts per request
+
+### 17.3 Example Request
+
+```bash
+curl -X POST http://localhost:8000/recommend \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portfolio": [
+      {
+        "card_id": "amex_gold",
+        "card_name": "Amex Gold",
+        "reward_rates": {
+          "universal_base_rate": 1.0,
+          "category_bonuses": {"dining": 4.0, "groceries": 4.0}
+        },
+        "annual_fee": 250
+      },
+      {
+        "card_id": "citi_double",
+        "card_name": "Citi Double Cash",
+        "reward_rates": {"universal_base_rate": 2.0},
+        "annual_fee": 0
+      }
+    ],
+    "transaction": {
+      "amount": 80.0,
+      "category": "dining",
+      "merchant": "Sweetgreen",
+      "mcc_code": 5812
+    },
+    "personalization_signals": {"user_segment": "foodie"},
+    "explanation_type": "single_transaction_recommendation"
+  }'
+```
+
+### 17.4 Story 4.4 Latency Benchmark
+
+Run the dedicated benchmark and validate the p95 latency budget (`<= 2000ms`):
+
+```bash
+export PYTHONPATH=.
+export GCP_PROJECT_ID=<your-project-id>
+export ENABLE_LLM_EXPLANATIONS=true
+python -m scripts.benchmark_llm_latency --requests 20 --budget-ms 2000
+```

@@ -117,3 +117,16 @@ monitoring:
     metric: mape
     threshold: 0.05
     trigger_retraining: true
+
+# LLM Explainability (Epic 4)
+llm_explainability:
+  provider: vertex_ai
+  model: gemini-2.5-flash
+  fallback_model: gemini-2.5-pro
+  generation:
+    temperature: 0.2
+    timeout_sec: 10
+    latency_budget_ms: 2000
+  quality_filters:
+    max_chars: 800
+    min_rationale_points: 2

@@ -16,7 +16,6 @@ Exit codes:
 import importlib
 import os
 import sys
-import traceback
 
 # ---- Configuration ----
 REQUIRED_PYTHON_VERSION = (3, 9)
@@ -58,7 +57,10 @@ def check_python_version():
     current = sys.version_info[:2]
     if current >= REQUIRED_PYTHON_VERSION:
         return True, f"Python {current[0]}.{current[1]}"
-    return False, f"Python {current[0]}.{current[1]} (need >= {REQUIRED_PYTHON_VERSION[0]}.{REQUIRED_PYTHON_VERSION[1]})"
+    return (
+        False,
+        f"Python {current[0]}.{current[1]} (need >= {REQUIRED_PYTHON_VERSION[0]}.{REQUIRED_PYTHON_VERSION[1]})",
+    )
 
 
 def check_packages():
@@ -78,6 +80,7 @@ def check_project_importable():
     """Check that the model_pipeline package is importable."""
     try:
         import model_pipeline
+
         return True, f"v{model_pipeline.__version__}"
     except ImportError as e:
         return False, str(e)
@@ -114,6 +117,7 @@ def check_mlflow_connectivity():
 
     try:
         import mlflow
+
         mlflow.set_tracking_uri(uri)
         # Try listing experiments as a connectivity check
         mlflow.search_experiments()

@@ -1156,7 +1156,6 @@ def _detect_anomalies(**context):
 
     # Determine overall max severity
     if all_reports:
-
         overall_max = max(r.max_severity for r in all_reports)
         combined_result["max_severity"] = overall_max.name
 
@@ -1573,4 +1572,3 @@ with DAG(
         >> reporting_group
         >> pipeline_end
     )
-    
