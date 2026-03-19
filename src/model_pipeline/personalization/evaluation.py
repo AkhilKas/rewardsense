@@ -35,10 +35,38 @@ class RegressionMetrics:
 
 
 @dataclass
+class RankingMetrics:
+    """Container for ranking-quality metrics.
+
+    These evaluate the model's ability to correctly *rank* items
+    (cards) by predicted point value, which matters because the
+    downstream use-case is card recommendation.
+    """
+
+    ndcg_at_k: float
+    map_at_k: float
+    precision_at_k: float
+    recall_at_k: float
+    mrr: float
+    k: int
+
+    def to_dict(self) -> Dict[str, float]:
+        return {
+            f"ndcg@{self.k}": self.ndcg_at_k,
+            f"map@{self.k}": self.map_at_k,
+            f"precision@{self.k}": self.precision_at_k,
+            f"recall@{self.k}": self.recall_at_k,
+            "mrr": self.mrr,
+            "k": self.k,
+        }
+
+
+@dataclass
 class EvaluationReport:
     """Full evaluation report including segment breakdowns."""
 
     overall: RegressionMetrics
+    ranking: Optional[RankingMetrics] = None
     segment_metrics: Dict[str, Dict[str, RegressionMetrics]] = field(
         default_factory=dict
     )
@@ -46,6 +74,8 @@ class EvaluationReport:
 
     def to_dict(self) -> Dict[str, Any]:
         result: Dict[str, Any] = {"overall": self.overall.to_dict()}
+        if self.ranking:
+            result["ranking"] = self.ranking.to_dict()
         if self.segment_metrics:
             result["segments"] = {
                 dim: {seg: m.to_dict() for seg, m in segs.items()}
@@ -65,6 +95,90 @@ def compute_regression_metrics(
     mae = float(mean_absolute_error(y_true, y_pred))
     r2 = float(r2_score(y_true, y_pred))
     return RegressionMetrics(rmse=rmse, mae=mae, r2=r2)
+
+
+def _dcg(relevances: np.ndarray) -> float:
+    """Discounted Cumulative Gain."""
+    return float(np.sum(relevances / np.log2(np.arange(2, len(relevances) + 2))))
+
+
+def compute_ranking_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    k: int = 5,
+) -> RankingMetrics:
+    """Compute ranking-quality metrics by treating predictions as scores.
+
+    Items are grouped into ``k`` "relevant" items (those with the highest
+    true values).  Predicted scores are used to produce a ranking, and
+    standard IR metrics are computed against the true top-k set.
+
+    Parameters
+    ----------
+    y_true, y_pred : array-like  (same length)
+    k : int
+        Cut-off for @K metrics.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    n = len(y_true)
+    k = min(k, n)
+
+    true_top_k_idx = set(np.argsort(y_true)[::-1][:k])
+    pred_ranked_idx = np.argsort(y_pred)[::-1]
+
+    # --- NDCG@K ---
+    pred_relevances = np.array(
+        [1.0 if pred_ranked_idx[i] in true_top_k_idx else 0.0 for i in range(k)]
+    )
+    ideal_relevances = np.ones(k)
+    ndcg = (
+        _dcg(pred_relevances) / _dcg(ideal_relevances)
+        if _dcg(ideal_relevances) > 0
+        else 0.0
+    )
+
+    # --- Precision@K ---
+    hits_at_k = sum(1 for i in range(k) if pred_ranked_idx[i] in true_top_k_idx)
+    precision = hits_at_k / k
+
+    # --- Recall@K ---
+    recall = hits_at_k / len(true_top_k_idx) if true_top_k_idx else 0.0
+
+    # --- MAP@K (Average Precision) ---
+    cum_hits = 0
+    precision_sum = 0.0
+    for i in range(k):
+        if pred_ranked_idx[i] in true_top_k_idx:
+            cum_hits += 1
+            precision_sum += cum_hits / (i + 1)
+    map_at_k = precision_sum / min(k, len(true_top_k_idx)) if true_top_k_idx else 0.0
+
+    # --- MRR (Mean Reciprocal Rank) ---
+    mrr = 0.0
+    for i in range(n):
+        if pred_ranked_idx[i] in true_top_k_idx:
+            mrr = 1.0 / (i + 1)
+            break
+
+    result = RankingMetrics(
+        ndcg_at_k=round(ndcg, 4),
+        map_at_k=round(map_at_k, 4),
+        precision_at_k=round(precision, 4),
+        recall_at_k=round(recall, 4),
+        mrr=round(mrr, 4),
+        k=k,
+    )
+    logger.info(
+        "Ranking@{} — NDCG: {}, MAP: {}, P: {}, R: {}, MRR: {}",
+        k,
+        result.ndcg_at_k,
+        result.map_at_k,
+        result.precision_at_k,
+        result.recall_at_k,
+        result.mrr,
+    )
+    return result
 
 
 def compute_segment_metrics(
@@ -153,8 +267,9 @@ def evaluate(
     meta: Optional[pd.DataFrame] = None,
     segment_columns: Optional[List[str]] = None,
     train_metrics: Optional[RegressionMetrics] = None,
+    ranking_k: int = 5,
 ) -> EvaluationReport:
-    """Full evaluation: overall + segments + overfitting check.
+    """Full evaluation: overall + ranking + segments + overfitting check.
 
     Parameters
     ----------
@@ -168,6 +283,8 @@ def evaluate(
         Which columns to segment by.
     train_metrics : RegressionMetrics or None
         If provided, runs overfitting comparison.
+    ranking_k : int
+        Cut-off K for ranking metrics.
     """
     overall = compute_regression_metrics(y_true.values, y_pred)
     logger.info(
@@ -176,6 +293,8 @@ def evaluate(
         overall.mae,
         overall.r2,
     )
+
+    ranking = compute_ranking_metrics(y_true.values, y_pred, k=ranking_k)
 
     segments: Dict[str, Dict[str, RegressionMetrics]] = {}
     if meta is not None:
@@ -187,6 +306,7 @@ def evaluate(
 
     return EvaluationReport(
         overall=overall,
+        ranking=ranking,
         segment_metrics=segments,
         overfitting_check=overfit,
     )

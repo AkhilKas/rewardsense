@@ -62,3 +62,30 @@ class TestHyperparameterTuner:
         tuner.tune()
         df = tuner.get_trials_dataframe()
         assert len(df) == 3
+
+    def test_compute_param_importances(self, xy_pair):
+        X, y = xy_pair
+        tuner = HyperparameterTuner(
+            model_name="xgboost",
+            X_train=X,
+            y_train=y,
+            n_trials=5,
+            cv_folds=2,
+            use_mlflow=False,
+        )
+        tuner.tune()
+        importances = tuner.compute_param_importances()
+        assert isinstance(importances, dict)
+        assert len(importances) > 0
+        assert all(isinstance(v, float) for v in importances.values())
+
+    def test_param_importances_before_tune_raises(self, xy_pair):
+        X, y = xy_pair
+        tuner = HyperparameterTuner(
+            model_name="xgboost",
+            X_train=X,
+            y_train=y,
+            use_mlflow=False,
+        )
+        with pytest.raises(RuntimeError, match="tune"):
+            tuner.compute_param_importances()

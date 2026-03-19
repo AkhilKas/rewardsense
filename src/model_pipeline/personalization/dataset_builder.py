@@ -23,6 +23,7 @@ from model_pipeline.data_loader import DataPipelineLoader
 from model_pipeline.personalization.features import (
     ALL_NUMERIC_FEATURES,
     TARGET_COLUMN,
+    compute_derived_features,
     detect_onehot_columns,
     get_feature_columns,
     validate_feature_frame,
@@ -170,6 +171,7 @@ class DatasetBuilder:
         """
         merged = self.load_and_join()
         imputed, _ = self.impute_missing(merged)
+        imputed = compute_derived_features(imputed)
 
         warnings = validate_feature_frame(imputed)
         if any("Target column" in w for w in warnings):

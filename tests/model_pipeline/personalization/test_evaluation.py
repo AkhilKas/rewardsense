@@ -5,8 +5,10 @@ import pandas as pd
 
 from model_pipeline.personalization.evaluation import (
     EvaluationReport,
+    RankingMetrics,
     RegressionMetrics,
     check_overfitting,
+    compute_ranking_metrics,
     compute_regression_metrics,
     compute_segment_metrics,
     evaluate,
@@ -56,6 +58,44 @@ class TestComputeSegmentMetrics:
         assert len(result.get("seg", {})) == 0
 
 
+class TestComputeRankingMetrics:
+    def test_perfect_ranking(self):
+        y_true = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
+        y_pred = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
+        m = compute_ranking_metrics(y_true, y_pred, k=3)
+        assert isinstance(m, RankingMetrics)
+        assert m.ndcg_at_k == 1.0
+        assert m.precision_at_k == 1.0
+        assert m.mrr == 1.0
+
+    def test_reversed_ranking(self):
+        y_true = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
+        y_pred = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        m = compute_ranking_metrics(y_true, y_pred, k=3)
+        assert m.ndcg_at_k < 1.0
+        assert m.precision_at_k < 1.0
+
+    def test_to_dict_keys(self):
+        m = RankingMetrics(
+            ndcg_at_k=0.9,
+            map_at_k=0.8,
+            precision_at_k=0.7,
+            recall_at_k=0.6,
+            mrr=0.5,
+            k=5,
+        )
+        d = m.to_dict()
+        assert "ndcg@5" in d
+        assert "map@5" in d
+        assert "mrr" in d
+
+    def test_k_larger_than_n_clips(self):
+        y_true = np.array([1.0, 2.0])
+        y_pred = np.array([2.0, 1.0])
+        m = compute_ranking_metrics(y_true, y_pred, k=10)
+        assert m.k == 2  # clipped to n
+
+
 class TestCheckOverfitting:
     def test_no_overfit(self):
         train = RegressionMetrics(rmse=0.05, mae=0.03, r2=0.9)
@@ -78,9 +118,17 @@ class TestEvaluate:
         assert isinstance(report, EvaluationReport)
         assert report.overall.rmse >= 0
 
+    def test_report_includes_ranking(self):
+        y_true = pd.Series([0.01, 0.02, 0.015, 0.025])
+        y_pred = np.array([0.011, 0.019, 0.016, 0.024])
+        report = evaluate(y_true, y_pred)
+        assert report.ranking is not None
+        assert isinstance(report.ranking, RankingMetrics)
+
     def test_to_dict_serializable(self):
         y_true = pd.Series([0.01, 0.02, 0.015])
         y_pred = np.array([0.011, 0.019, 0.016])
         report = evaluate(y_true, y_pred)
         d = report.to_dict()
         assert "overall" in d
+        assert "ranking" in d
