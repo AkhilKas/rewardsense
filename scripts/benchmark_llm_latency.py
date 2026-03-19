@@ -62,6 +62,7 @@ def main() -> None:
 
     generator = ExplanationGenerator(llm_client=client, model_name=args.model)
     tracker = RewardSenseTracker(experiment="llm-explainability")
+    tracker.log_dict = lambda d, path: print(f"Mocked artifact save: {path}")
 
     bench = ExplanationLatencyBenchmark(
         generator=generator,
