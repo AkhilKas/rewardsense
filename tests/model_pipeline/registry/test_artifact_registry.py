@@ -11,6 +11,7 @@ Tests:
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -27,16 +28,16 @@ from src.model_pipeline.registry.artifact_registry import (
 
 @pytest.fixture
 def local_registry(tmp_path):
-    """Registry client with GCS disabled, local cache only."""
+    """Registry client with remote disabled, local cache only."""
     client = RegistryClient(
         project="test-project",
         location="us-central1",
         repository="test-repo",
-        bucket="test-bucket",
         local_cache=tmp_path / "cache",
     )
-    # Force local-only mode — prevent real GCS calls in unit tests
-    client._gcs_client = None
+    # Force local-only mode — prevent real Artifact Registry calls
+    client._credentials = None
+    client._ar_client = None
     return client
 
 
@@ -160,15 +161,15 @@ class TestPull:
         assert path.exists()
         assert (path / "model.pkl").exists()
 
-    def test_pull_not_cached_no_gcs_raises(self, local_registry):
-        """Pull should raise if not cached and GCS unavailable."""
+    def test_pull_not_cached_no_remote_raises(self, local_registry):
+        """Pull should raise if not cached and remote unavailable."""
         with pytest.raises(RuntimeError, match="not in local cache"):
             local_registry.pull_model("nonexistent", "1.0.0")
 
     def test_pull_force_redownload(self, local_registry, model_file):
         """force=True should still work with local-only (re-reads cache)."""
         local_registry.push_model(model_file, "m", "1.0.0")
-        # force=True but no GCS — should still return cached
+        # force=True but no remote — should still return cached
         path = local_registry.pull_model("m", "1.0.0", force=True)
         assert path.exists()
 
@@ -191,7 +192,6 @@ class TestListVersions:
 
         versions = local_registry.list_versions("m")
         assert len(versions) == 3
-        # Most recent first
         ver_strings = [v.version for v in versions]
         assert "2.0.0" in ver_strings
         assert "1.1.0" in ver_strings
@@ -247,3 +247,56 @@ class TestIntegrity:
         mv1 = local_registry.push_model(f1, "m", "1.0.0")
         mv2 = local_registry.push_model(f2, "m", "2.0.0")
         assert mv1.sha256 != mv2.sha256
+
+
+# =====================================================================
+# Authentication & Remote Availability
+# =====================================================================
+
+
+class TestAuthentication:
+    def test_is_remote_available_false_without_creds(self, local_registry):
+        """Remote should be unavailable when credentials are None."""
+        assert local_registry.is_remote_available is False
+
+    def test_is_remote_available_true_with_creds(self, local_registry):
+        """Remote should be available when credentials exist."""
+        local_registry._credentials = MagicMock()
+        assert local_registry.is_remote_available is True
+
+    def test_get_auth_headers_raises_without_creds(self, local_registry):
+        """_get_auth_headers should raise when no credentials."""
+        with pytest.raises(RuntimeError, match="No GCP credentials"):
+            local_registry._get_auth_headers()
+
+    def test_get_auth_headers_returns_bearer_token(self, local_registry):
+        """_get_auth_headers should return Bearer token header."""
+        mock_creds = MagicMock()
+        mock_creds.token = "test-token-12345"
+        local_registry._credentials = mock_creds
+
+        with patch("google.auth.transport.requests.Request"):
+            headers = local_registry._get_auth_headers()
+
+        assert headers["Authorization"] == "Bearer test-token-12345"
+        mock_creds.refresh.assert_called_once()
+
+    def test_push_with_remote_calls_upload(self, local_registry, model_file):
+        """When remote is available, push should call _upload_to_ar."""
+        mock_creds = MagicMock()
+        mock_creds.token = "test-token"
+        local_registry._credentials = mock_creds
+
+        with patch.object(local_registry, "_upload_to_ar") as mock_upload:
+            local_registry.push_model(model_file, "m", "1.0.0")
+            mock_upload.assert_called_once()
+
+    def test_push_without_remote_skips_upload(self, local_registry, model_file):
+        """When remote is unavailable, push should only cache locally."""
+        with patch.object(local_registry, "_upload_to_ar") as mock_upload:
+            local_registry.push_model(model_file, "m", "1.0.0")
+            mock_upload.assert_not_called()
+
+        # But local cache should still work
+        cached = local_registry.local_cache / "m" / "v1.0.0"
+        assert (cached / "model.pkl").exists()
