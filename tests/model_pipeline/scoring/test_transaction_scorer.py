@@ -455,6 +455,206 @@ class TestBatchScoring:
 
 # ── End-to-End: Scorer + Ranker ──────────────────────────────────────
 
+# ── Cap Enforcement ───────────────────────────────────────────────
+
+
+class TestCapEnforcement:
+    """Test that spending caps are enforced during scoring."""
+
+    def test_bonus_rate_within_cap(self):
+        """Card earns bonus rate when under the cap."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+        from src.model_pipeline.scoring.spending_cap_tracker import SpendingCapTracker
+
+        tracker = SpendingCapTracker(user_id="user_001")
+        scorer = TransactionScorer(cap_tracker=tracker)
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "Grocery Card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0},
+                "category_caps": {"groceries": 6000.0},
+            },
+            "annual_fee": 0,
+        }
+
+        txn = {
+            "amount": 100.0,
+            "category": "groceries",
+            "merchant": "Whole Foods",
+            "mcc_code": 5411,
+        }
+
+        result = scorer.score_card(card, txn)
+        # Under cap → gets 4% bonus
+        assert result["reward_amount"] == 4.0
+
+    def test_base_rate_when_cap_exceeded(self):
+        """Card falls back to base rate after cap is exceeded."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+        from src.model_pipeline.scoring.spending_cap_tracker import SpendingCapTracker
+
+        tracker = SpendingCapTracker(user_id="user_001")
+        # Pre-load $6000 of grocery spend
+        tracker.record_transaction("card_001", "groceries", 6000.0)
+
+        scorer = TransactionScorer(cap_tracker=tracker)
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "Grocery Card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0},
+                "category_caps": {"groceries": 6000.0},
+            },
+            "annual_fee": 0,
+        }
+
+        txn = {
+            "amount": 100.0,
+            "category": "groceries",
+            "merchant": "Whole Foods",
+            "mcc_code": 5411,
+        }
+
+        result = scorer.score_card(card, txn)
+        # Cap exceeded → falls back to 1% base
+        assert result["reward_amount"] == 1.0
+
+    def test_cap_tracks_across_transactions(self):
+        """Spending accumulates and cap kicks in mid-session."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+        from src.model_pipeline.scoring.spending_cap_tracker import SpendingCapTracker
+
+        tracker = SpendingCapTracker(user_id="user_001")
+        scorer = TransactionScorer(cap_tracker=tracker)
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "Grocery Card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0},
+                "category_caps": {"groceries": 200.0},  # low cap for testing
+            },
+            "annual_fee": 0,
+        }
+
+        # First txn: $150 → under $200 cap → bonus rate
+        txn1 = {
+            "amount": 150.0,
+            "category": "groceries",
+            "merchant": "Store",
+            "mcc_code": 5411,
+        }
+        r1 = scorer.score_card(card, txn1)
+        assert r1["reward_amount"] == 6.0  # 4% of $150
+
+        # Second txn: $150 → total $300, exceeds $200 cap → base rate
+        txn2 = {
+            "amount": 150.0,
+            "category": "groceries",
+            "merchant": "Store",
+            "mcc_code": 5411,
+        }
+        r2 = scorer.score_card(card, txn2)
+        assert r2["reward_amount"] == 1.5  # 1% of $150
+
+    def test_cap_only_affects_capped_category(self):
+        """Cap on groceries doesn't affect dining bonus."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+        from src.model_pipeline.scoring.spending_cap_tracker import SpendingCapTracker
+
+        tracker = SpendingCapTracker(user_id="user_001")
+        tracker.record_transaction("card_001", "groceries", 6000.0)
+
+        scorer = TransactionScorer(cap_tracker=tracker)
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "Multi Bonus",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0, "dining": 3.0},
+                "category_caps": {"groceries": 6000.0},
+            },
+            "annual_fee": 0,
+        }
+
+        txn = {
+            "amount": 100.0,
+            "category": "dining",
+            "merchant": "Restaurant",
+            "mcc_code": 5812,
+        }
+        result = scorer.score_card(card, txn)
+        # Dining has no cap → still gets 3% bonus
+        assert result["reward_amount"] == 3.0
+
+    def test_no_cap_defined_means_unlimited(self):
+        """Cards without category_caps get bonus rate always."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+        from src.model_pipeline.scoring.spending_cap_tracker import SpendingCapTracker
+
+        tracker = SpendingCapTracker(user_id="user_001")
+        tracker.record_transaction("card_001", "groceries", 999999.0)
+
+        scorer = TransactionScorer(cap_tracker=tracker)
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "No Cap Card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0},
+                # No category_caps key
+            },
+            "annual_fee": 0,
+        }
+
+        txn = {
+            "amount": 100.0,
+            "category": "groceries",
+            "merchant": "Store",
+            "mcc_code": 5411,
+        }
+        result = scorer.score_card(card, txn)
+        # No cap defined → bonus applies forever
+        assert result["reward_amount"] == 4.0
+
+    def test_no_tracker_means_no_enforcement(self):
+        """Without a tracker, caps are ignored (backward compatible)."""
+        from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+
+        scorer = TransactionScorer()  # no tracker
+
+        card = {
+            "card_id": "card_001",
+            "card_name": "Grocery Card",
+            "reward_rates": {
+                "universal_base_rate": 1.0,
+                "category_bonuses": {"groceries": 4.0},
+                "category_caps": {"groceries": 6000.0},
+            },
+            "annual_fee": 0,
+        }
+
+        txn = {
+            "amount": 100.0,
+            "category": "groceries",
+            "merchant": "Store",
+            "mcc_code": 5411,
+        }
+        result = scorer.score_card(card, txn)
+        # No tracker → no enforcement → bonus rate
+        assert result["reward_amount"] == 4.0
+
+
+# ── End-to-End: Scorer + Ranker ──────────────────────────────────────
+
 
 class TestScorerRankerIntegration:
     """Test TransactionScorer + CardRanker working together."""
