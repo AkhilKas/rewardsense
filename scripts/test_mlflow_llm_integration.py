@@ -1,7 +1,6 @@
 import json
 import random
 import time
-import uuid
 
 from src.model_pipeline.llm import ExplanationGenerator, ExplanationLatencyBenchmark
 from src.model_pipeline.llm.prompt_builder import ExplanationType

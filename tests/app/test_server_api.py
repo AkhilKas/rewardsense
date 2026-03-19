@@ -10,6 +10,9 @@ if "loguru" not in sys.modules:
         logger=SimpleNamespace(
             info=lambda *args, **kwargs: None,
             warning=lambda *args, **kwargs: None,
+            error=lambda *args, **kwargs: None,
+            debug=lambda *args, **kwargs: None,
+            success=lambda *args, **kwargs: None,
         )
     )
 

@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -25,7 +24,7 @@ with DAG(
     catchup=False,
     tags=["model", "rewardsense", "ml"],
 ) as dag:
-    
+
     wait_for_data_pipeline = ExternalTaskSensor(
         task_id="wait_for_data_pipeline",
         external_dag_id="rewardsense_data_pipeline",
@@ -39,12 +38,12 @@ with DAG(
             task_id="data_loading",
             bash_command="echo 'Python script for pulling DVC data...'",
         )
-        
+
         feature_engineering = BashOperator(
             task_id="feature_engineering",
             bash_command="echo 'Python script for model feature generation...'",
         )
-        
+
         data_loading >> feature_engineering
 
     with TaskGroup("model_development") as model_dev:
@@ -58,12 +57,12 @@ with DAG(
             task_id="validation",
             bash_command="pytest tests/model_pipeline/cd/test_gates.py::test_validation_gate_pass",
         )
-        
+
         bias_detection = BashOperator(
             task_id="bias_detection",
             bash_command="echo 'Executing Bias Reports...'",
         )
-        
+
         validation >> bias_detection
 
     with TaskGroup("deployment") as deployment:

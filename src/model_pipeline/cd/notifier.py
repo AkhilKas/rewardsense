@@ -11,6 +11,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
 class NotificationDispatcher:
     def __init__(self, config_path: str = "config/alerts.yaml"):
         self.config = self._load_config(config_path)
@@ -36,21 +37,25 @@ class NotificationDispatcher:
 
         if self.config.get("slack", {}).get("enabled", False):
             self._send_slack(message, level)
-            
+
         if self.config.get("email", {}).get("enabled", False):
             self._send_email(message, level)
 
     def _send_slack(self, message: str, level: str) -> None:
-        webhook_var = self.config.get("slack", {}).get("webhook_env_var", "SLACK_WEBHOOK_URL")
+        webhook_var = self.config.get("slack", {}).get(
+            "webhook_env_var", "SLACK_WEBHOOK_URL"
+        )
         webhook_url = os.getenv(webhook_var)
         if not webhook_url:
             logger.debug("Slack webhook URL not found in environment, skipping.")
             return
-            
+
         # In a real environment, this would do a requests.post to the webhook
         logger.info(f"==> Mocked Slack payload sent: [{level}] {message}")
 
     def _send_email(self, message: str, level: str) -> None:
         # In a real environment, this would use smtplib
         email_config = self.config.get("email", {})
-        logger.info(f"==> Mocked Email sent from {email_config.get('from_address')}: [{level}] {message}")
+        logger.info(
+            f"==> Mocked Email sent from {email_config.get('from_address')}: [{level}] {message}"
+        )
