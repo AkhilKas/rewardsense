@@ -19,8 +19,8 @@ with DAG(
     "rewardsense_model_pipeline",
     default_args=default_args,
     description="Model training pipeline for personalized credit card recommendations",
-    schedule="@weekly",
-    start_date=datetime(2026, 1, 1),
+    schedule="0 8 * * 0",
+    start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["model", "rewardsense", "ml"],
 ) as dag:
@@ -29,8 +29,10 @@ with DAG(
         task_id="wait_for_data_pipeline",
         external_dag_id="rewardsense_data_pipeline",
         external_task_id=None,  # Wait for the whole DAG to complete
+        execution_delta=timedelta(hours=2),
         mode="reschedule",
         timeout=3600,
+        soft_fail=True,
     )
 
     with TaskGroup("data_preparation") as data_prep:
