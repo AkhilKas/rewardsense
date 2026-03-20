@@ -55,12 +55,22 @@ with DAG(
     with TaskGroup("quality_gates") as quality_gates:
         validation = BashOperator(
             task_id="validation",
-            bash_command="cd $DAGS_FOLDER && python -c \"from src.model_pipeline.cd.gates import ValidationGate; gate = ValidationGate({'ndcg@10': 0.7}); assert gate.evaluate({'ndcg@10': 0.85}), 'Validation Gate Failed'\"",
+            bash_command="""cd $DAGS_FOLDER && python -c "
+import json
+from src.model_pipeline.cd.gates import ValidationGate
+metrics = json.load(open('/tmp/model_pipeline/metrics.json'))
+gate = ValidationGate({'ndcg@10': 0.7})
+assert gate.evaluate(metrics), f'Validation Gate Failed: {metrics}'
+" """,
         )
 
         bias_detection = BashOperator(
             task_id="bias_detection",
-            bash_command="cd $DAGS_FOLDER && echo '{\"metrics\": []}' > /tmp/bias_report.json && python -c \"from src.model_pipeline.cd.gates import BiasGate; gate = BiasGate(); assert gate.evaluate('/tmp/bias_report.json'), 'Bias Gate Failed'\"",
+            bash_command="""cd $DAGS_FOLDER && python -c "
+from src.model_pipeline.cd.gates import BiasGate
+gate = BiasGate()
+assert gate.evaluate('/tmp/model_pipeline/bias_report.json'), 'Bias Gate Failed'
+" """,
         )
 
         validation >> bias_detection
@@ -68,7 +78,14 @@ with DAG(
     with TaskGroup("deployment") as deployment:
         registry_push = BashOperator(
             task_id="registry_push",
-            bash_command="cd $DAGS_FOLDER && mkdir -p /tmp/model_build && python -c \"from src.model_pipeline.cd.gates import RegistryGate; gate = RegistryGate('rewardsense-prod', 'us-central1', 'rewardsense-models', 'personalization'); gate.push('/tmp/model_build', 'v1.0')\"",
+            bash_command="""cd $DAGS_FOLDER && python -c "
+import json
+from src.model_pipeline.cd.gates import RegistryGate
+metrics = json.load(open('/tmp/model_pipeline/metrics.json'))
+version = 'v' + metrics.get('run_id', '1.0')
+gate = RegistryGate('rewardsense-prod', 'us-central1', 'rewardsense-models', 'personalization')
+gate.push('/tmp/model_pipeline/model_artifact', version)
+" """,
         )
 
     # DAG execution order
