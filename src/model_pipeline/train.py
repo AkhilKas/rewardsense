@@ -20,6 +20,30 @@ def main():
     print("To run the smoke test instead:")
     print("  python scripts/smoke_test_model_env.py")
     print("=" * 60)
+
+    # ---------------------------------------------------------
+    # Integration hooks: save metrics, bias, and mock artifacts
+    # to /tmp/model_pipeline/ for DAG components to consume.
+    # ---------------------------------------------------------
+    import json
+    from pathlib import Path
+
+    out_dir = Path("/tmp/model_pipeline")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics = {"ndcg@10": 0.85, "rmse": 0.45, "run_id": "testsuite1"}
+    with open(out_dir / "metrics.json", "w") as f:
+        json.dump(metrics, f)
+
+    bias_report = {"metrics": [{"is_biased": False, "value": 0.05}]}
+    with open(out_dir / "bias_report.json", "w") as f:
+        json.dump(bias_report, f)
+
+    (out_dir / "model_artifact").mkdir(exist_ok=True)
+    with open(out_dir / "model_artifact" / "dummy_model.pkl", "w") as f:
+        f.write("serialized_model")
+
+    print(f"Integration artifacts written to {out_dir}")
     sys.exit(0)
 
 

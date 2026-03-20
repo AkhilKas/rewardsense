@@ -64,8 +64,12 @@ class BiasGate:
 class RegistryGate:
     """Pushes successful models to the Artifact Registry (currently backed by GCS)."""
 
-    def __init__(self, project_id: str, bucket_name: str, model_name: str):
-        self.client = RegistryClient(project=project_id, bucket_name=bucket_name)
+    def __init__(
+        self, project_id: str, location: str, repository: str, model_name: str
+    ):
+        self.client = RegistryClient(
+            project=project_id, location=location, repository=repository
+        )
         self.model_name = model_name
 
     def push(self, local_model_dir: str, version_tag: str) -> str:
