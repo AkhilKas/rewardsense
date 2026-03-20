@@ -45,8 +45,18 @@ jobs:
           docker build -t rewardsense-model -f Dockerfile.model .
           docker compose up -d mlflow-server
           sleep 10
-          # Run training container connected to the compose network
-          docker run --network rewardsense_default -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 rewardsense-model python src/model_pipeline/train.py
+          
+          # Pre-create the output directory with open permissions so the runner can read the container's output
+          mkdir -p /tmp/model_pipeline
+          chmod 777 /tmp/model_pipeline
+          
+          # Run training container connected to the compose network with DVC data mounted
+          docker run \
+            --network rewardsense_default \
+            -v ${{ github.workspace }}/data:/app/data \
+            -v /tmp/model_pipeline:/tmp/model_pipeline \
+            -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 \
+            rewardsense-model python src/model_pipeline/train.py
 
       - name: Run Quality Gates (Validation, Bias, Champion/Challenger)
         env:
