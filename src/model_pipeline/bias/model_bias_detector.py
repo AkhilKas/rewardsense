@@ -1,5 +1,5 @@
 """
- Model-Level Bias Detection with Fairlearn.
+Model-Level Bias Detection with Fairlearn.
 
 - Extends BiasDetector for model predictions.
 - Computes per-slice fairness metrics using Fairlearn MetricFrame, flags disparities, and generates bias reports with visualizations.
