@@ -16,8 +16,12 @@ logger = logging.getLogger(__name__)
 class ModelRollbackManager:
     """Manages rollback of the active production model to the previous stable version."""
 
-    def __init__(self, project_id: str, bucket_name: str, model_name: str):
-        self.client = RegistryClient(project=project_id, bucket_name=bucket_name)
+    def __init__(
+        self, project_id: str, location: str, repository: str, model_name: str
+    ):
+        self.client = RegistryClient(
+            project=project_id, location=location, repository=repository
+        )
         self.model_name = model_name
         self.notifier = NotificationDispatcher()
 

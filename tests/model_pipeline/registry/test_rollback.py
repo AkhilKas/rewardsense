@@ -23,7 +23,9 @@ def test_rollback_success(
     mock_df.iloc = [mock_row_0, mock_row_1]
     mock_search.return_value = mock_df
 
-    manager = ModelRollbackManager("pid", "bucket", "personalization")
+    manager = ModelRollbackManager(
+        "pid", "us-central1", "rewardsense-models", "personalization"
+    )
 
     with patch.object(manager.notifier, "notify") as mock_notify:
         result = manager.execute_rollback("Bad validation metrics")
@@ -48,7 +50,9 @@ def test_rollback_no_previous_version(mock_search, mock_exp, mock_registry):
     mock_df.__len__.return_value = 1
     mock_search.return_value = mock_df
 
-    manager = ModelRollbackManager("pid", "bucket", "personalization")
+    manager = ModelRollbackManager(
+        "pid", "us-central1", "rewardsense-models", "personalization"
+    )
 
     with patch.object(manager.notifier, "notify") as mock_notify:
         result = manager.execute_rollback("Bad testing metric")
