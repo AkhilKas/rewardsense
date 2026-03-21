@@ -135,3 +135,20 @@ models/*.pt
 
 # Kubernetes
 *.secret.yaml
+
+# MLflow local artifacts
+mlflow.db
+mlruns/
+
+# Generated reports
+reports/*.html
+reports/*.pdf
+reports/*.png
+reports/*.json
+
+# Bias history (tracked by DVC, not git)
+data/bias_history/
+
+# Model cache
+.model_cache/
+models/*.pkl
