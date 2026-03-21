@@ -18,11 +18,11 @@ from loguru import logger
 import joblib
 import numpy as np
 
-from model_pipeline.personalization.dataset_builder import DatasetBuilder
-from model_pipeline.personalization.splits import split_data
-from model_pipeline.personalization.trainer import Trainer
-from model_pipeline.bias.model_bias_detector import ModelBiasDetector
-from model_pipeline.personalization.evaluation import compute_ranking_metrics
+from src.model_pipeline.personalization.dataset_builder import DatasetBuilder
+from src.model_pipeline.personalization.splits import split_data
+from src.model_pipeline.personalization.trainer import Trainer
+from src.model_pipeline.bias.model_bias_detector import ModelBiasDetector
+from src.model_pipeline.personalization.evaluation import compute_ranking_metrics
 
 
 def main():

@@ -19,8 +19,8 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from model_pipeline.data_loader import DataPipelineLoader
-from model_pipeline.personalization.features import (
+from src.model_pipeline.data_loader import DataPipelineLoader
+from src.model_pipeline.personalization.features import (
     ALL_NUMERIC_FEATURES,
     TARGET_COLUMN,
     compute_derived_features,

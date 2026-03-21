@@ -17,7 +17,7 @@ import pandas as pd
 from loguru import logger
 from sklearn.model_selection import cross_val_score
 
-from model_pipeline.personalization.models import create_model
+from src.model_pipeline.personalization.models import create_model
 
 # ── Default search space for XGBoost ──────────────────────────────────
 

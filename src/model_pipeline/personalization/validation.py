@@ -25,13 +25,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from loguru import logger
 
-from model_pipeline.personalization.evaluation import (
+from src.model_pipeline.personalization.evaluation import (
     EvaluationReport,
     RegressionMetrics,
     check_overfitting,
     evaluate,
 )
-from model_pipeline.personalization.splits import SplitResult
+from src.model_pipeline.personalization.splits import SplitResult
 
 
 @dataclass
@@ -216,7 +216,7 @@ class HoldoutValidator:
 
         # --- Segment performance bar chart ---
         if self.split.meta_test is not None:
-            from model_pipeline.personalization.evaluation import (
+            from src.model_pipeline.personalization.evaluation import (
                 compute_segment_metrics,
             )
 

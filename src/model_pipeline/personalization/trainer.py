@@ -21,14 +21,14 @@ import joblib
 import pandas as pd
 from loguru import logger
 
-from model_pipeline.personalization.evaluation import (
+from src.model_pipeline.personalization.evaluation import (
     EvaluationReport,
     RegressionMetrics,
     compute_regression_metrics,
     evaluate,
 )
-from model_pipeline.personalization.models import create_model
-from model_pipeline.personalization.splits import SplitResult
+from src.model_pipeline.personalization.models import create_model
+from src.model_pipeline.personalization.splits import SplitResult
 
 
 @dataclass
