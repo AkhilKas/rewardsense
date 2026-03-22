@@ -38,12 +38,20 @@ with DAG(
     with TaskGroup("data_preparation") as data_prep:
         data_loading = BashOperator(
             task_id="data_loading",
-            bash_command="cd $DAGS_FOLDER && python -m src.model_pipeline.data_loader",
+            bash_command=(
+                "cd $DAGS_FOLDER && python -m src.model_pipeline.data_loader"
+                ' && echo "data_loading: OK"'
+            ),
+            do_xcom_push=True,
         )
 
         feature_engineering = BashOperator(
             task_id="feature_engineering",
-            bash_command="cd $DAGS_FOLDER && python -m src.model_pipeline.personalization.features",
+            bash_command=(
+                "cd $DAGS_FOLDER && python -m src.model_pipeline.personalization.features"
+                ' && echo "feature_engineering: OK"'
+            ),
+            do_xcom_push=True,
         )
 
         data_loading >> feature_engineering
@@ -51,7 +59,11 @@ with DAG(
     with TaskGroup("model_development") as model_dev:
         model_training = BashOperator(
             task_id="model_training",
-            bash_command="cd $DAGS_FOLDER && python -m src.model_pipeline.train",
+            bash_command=(
+                "cd $DAGS_FOLDER && python -m src.model_pipeline.train"
+                ' && echo "model_training: OK"'
+            ),
+            do_xcom_push=True,
         )
 
     with TaskGroup("quality_gates") as quality_gates:
@@ -62,17 +74,24 @@ import json
 from src.model_pipeline.cd.gates import ValidationGate
 metrics = json.load(open('/tmp/model_pipeline/metrics.json'))
 gate = ValidationGate({'ndcg@10': 0.7})
-assert gate.evaluate(metrics), f'Validation Gate Failed: {metrics}'
+passed = gate.evaluate(metrics)
+assert passed, f'Validation Gate Failed: {metrics}'
+print(json.dumps({'gate': 'validation', 'passed': True, 'metrics': metrics}))
 " """,
+            do_xcom_push=True,
         )
 
         bias_detection = BashOperator(
             task_id="bias_detection",
             bash_command="""cd $DAGS_FOLDER && python -c "
+import json
 from src.model_pipeline.cd.gates import BiasGate
 gate = BiasGate()
-assert gate.evaluate('/tmp/model_pipeline/bias_report.json'), 'Bias Gate Failed'
+passed = gate.evaluate('/tmp/model_pipeline/bias_report.json')
+assert passed, 'Bias Gate Failed'
+print(json.dumps({'gate': 'bias_detection', 'passed': True}))
 " """,
+            do_xcom_push=True,
         )
 
         validation >> bias_detection
@@ -84,10 +103,12 @@ assert gate.evaluate('/tmp/model_pipeline/bias_report.json'), 'Bias Gate Failed'
 import json
 from src.model_pipeline.cd.gates import RegistryGate
 metrics = json.load(open('/tmp/model_pipeline/metrics.json'))
-version = 'v' + metrics.get('run_id', '1.0')
+version = 'v' + str(metrics.get('run_id', '1.0'))
 gate = RegistryGate('rewardsense-prod', 'us-central1', 'rewardsense-models', 'personalization')
-gate.push('/tmp/model_pipeline/model_artifact', version)
+result = gate.push('/tmp/model_pipeline/model_artifact', version)
+print(json.dumps({'gate': 'registry_push', 'version': version, 'result': str(result)}))
 " """,
+            do_xcom_push=True,
         )
 
     # DAG execution order

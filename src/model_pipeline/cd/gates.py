@@ -76,5 +76,5 @@ class RegistryGate:
         """Push model via client and return the URI."""
         logger.info(f"Pushing {self.model_name} (v{version_tag}) to registry")
         return self.client.push_model(
-            local_dir=local_model_dir, model_name=self.model_name, version=version_tag
+            local_path=local_model_dir, model_name=self.model_name, version=version_tag
         )
