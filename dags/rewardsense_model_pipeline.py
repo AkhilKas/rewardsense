@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -55,7 +56,11 @@ with DAG(
     with TaskGroup("model_development") as model_dev:
         model_training = BashOperator(
             task_id="model_training",
-            bash_command='set -e; cd $DAGS_FOLDER; export MLFLOW_TRACKING_URI=https://mlflow-server-760934308287.us-central1.run.app; python -m src.model_pipeline.train 1>&2; echo "model_training: OK"',
+            bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.train 1>&2; echo "model_training: OK"',
+            env={
+                "MLFLOW_TRACKING_URI": "https://mlflow-server-760934308287.us-central1.run.app"
+            },
+            append_env=True,
             do_xcom_push=True,
         )
 
