@@ -55,7 +55,7 @@ jobs:
             --network rewardsense_default \
             -v ${{ github.workspace }}/data:/app/data \
             -v /tmp/model_pipeline:/tmp/model_pipeline \
-            -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 \
+            -e MLFLOW_TRACKING_URI=https://mlflow-server-760934308287.us-central1.run.app \
             rewardsense-model python src/model_pipeline/train.py
 
       - name: Run Quality Gates (Validation, Bias, Champion/Challenger)

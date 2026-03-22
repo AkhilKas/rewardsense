@@ -1,0 +1,31 @@
+# ==============================================
+# MLflow Tracking Server — Cloud Run
+# ==============================================
+# A lightweight image to run the MLflow UI + tracking
+# server backed by GCS for artifact storage.
+# ==============================================
+
+FROM python:3.9-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    'mlflow>=2.10.0,<3.0.0' \
+    'google-cloud-storage>=2.14.0'
+
+# Directory for the SQLite backend store
+RUN mkdir -p /mlflow
+
+ENV PORT=8080
+
+EXPOSE 8080
+
+CMD mlflow server \
+    --host 0.0.0.0 \
+    --port ${PORT} \
+    --backend-store-uri sqlite:///mlflow/mlflow.db \
+    --default-artifact-root gs://rewardsense-mlflow-artifacts/ \
+    --serve-artifacts
