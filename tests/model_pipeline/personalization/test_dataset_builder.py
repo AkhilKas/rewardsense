@@ -3,11 +3,11 @@
 import numpy as np
 import pytest
 
-from model_pipeline.personalization.dataset_builder import (
+from src.model_pipeline.personalization.dataset_builder import (
     DatasetBuildError,
     DatasetBuilder,
 )
-from model_pipeline.personalization.features import (
+from src.model_pipeline.personalization.features import (
     TARGET_COLUMN,
 )
 

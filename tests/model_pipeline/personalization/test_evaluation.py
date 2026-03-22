@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from model_pipeline.personalization.evaluation import (
+from src.model_pipeline.personalization.evaluation import (
     EvaluationReport,
     RankingMetrics,
     RegressionMetrics,

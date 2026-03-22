@@ -47,9 +47,9 @@ ENV GCP_PROJECT_ID=rewardsense
 ENV GCP_BUCKET_NAME=rewardsense-dvc-store
 
 # Python settings
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # ---- Default entrypoint ----
 # Override with docker compose `command:` for different tasks
-CMD ["python", "-m", "model_pipeline.train"]
+CMD ["python", "-m", "src.model_pipeline.train"]

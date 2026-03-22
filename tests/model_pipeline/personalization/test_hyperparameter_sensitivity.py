@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from model_pipeline.personalization.sensitivity.hyperparameter_sensitivity import (
+from src.model_pipeline.personalization.sensitivity.hyperparameter_sensitivity import (
     HyperparameterAnalyzer,
     HPSensitivityResult,
     ParameterRange,

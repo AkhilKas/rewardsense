@@ -3,11 +3,11 @@
 import pytest
 from sklearn.ensemble import RandomForestRegressor
 
-from model_pipeline.personalization.sensitivity.segment_analysis import (
+from src.model_pipeline.personalization.sensitivity.segment_analysis import (
     SegmentAnalyzer,
     define_segments,
 )
-from model_pipeline.personalization.sensitivity.shap_analysis import SHAPAnalyzer
+from src.model_pipeline.personalization.sensitivity.shap_analysis import SHAPAnalyzer
 
 
 @pytest.fixture()

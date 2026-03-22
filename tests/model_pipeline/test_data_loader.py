@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from model_pipeline.data_loader import (
+from src.model_pipeline.data_loader import (
     REQUIRED_CREDIT_CARD_COLUMNS,
     REQUIRED_MANIFEST_KEYS,
     REQUIRED_TRANSACTION_COLUMNS,

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import RandomForestRegressor
 
-from model_pipeline.personalization.sensitivity.lime_analysis import LIMEAnalyzer
+from src.model_pipeline.personalization.sensitivity.lime_analysis import LIMEAnalyzer
 
 
 @pytest.fixture()

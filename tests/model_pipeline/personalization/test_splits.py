@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from model_pipeline.personalization.splits import (
+from src.model_pipeline.personalization.splits import (
     create_stratify_bins,
     split_data,
 )

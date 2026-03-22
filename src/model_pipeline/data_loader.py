@@ -69,6 +69,7 @@ def _resolve_data_root(data_root: Optional[str] = None) -> Path:
         1. Explicit ``data_root`` argument
         2. ``DATA_ROOT`` environment variable
         3. ``data/processed/current`` relative to project root
+        4. Cloud Composer GCS-fuse path (``/home/airflow/gcs/data/...``)
     """
     if data_root:
         return Path(data_root)
@@ -77,8 +78,26 @@ def _resolve_data_root(data_root: Optional[str] = None) -> Path:
     if env_root:
         return Path(env_root)
 
-    # Default: project-relative path
-    return Path("data/processed/current")
+    # Try local project-relative path first
+    local_path = Path("data/processed/current")
+    if local_path.exists():
+        return local_path
+
+    # Fallback: Cloud Composer GCS-fuse mount
+    composer_path = Path("/home/airflow/gcs/data/processed/current")
+    if composer_path.exists():
+        logger.info("Using Composer GCS-fuse data path: {}", composer_path)
+        return composer_path
+
+    # Return the local default — downstream code will raise a clear error
+    logger.warning(
+        "Data root not found at any of the expected locations: "
+        "[{}] (local), [{}] (Composer GCS-fuse). "
+        "Set DATA_ROOT env var or ensure data is available.",
+        local_path,
+        composer_path,
+    )
+    return local_path
 
 
 class DataPipelineLoader:

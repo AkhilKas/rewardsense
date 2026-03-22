@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from model_pipeline.personalization.features import (
+from src.model_pipeline.personalization.features import (
     ALL_NUMERIC_FEATURES,
     TARGET_COLUMN,
     TRANSACTION_NUMERIC_FEATURES,

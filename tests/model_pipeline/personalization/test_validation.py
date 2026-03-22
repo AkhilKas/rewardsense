@@ -2,9 +2,9 @@
 
 import pytest
 
-from model_pipeline.personalization.models import create_model
-from model_pipeline.personalization.splits import split_data
-from model_pipeline.personalization.validation import (
+from src.model_pipeline.personalization.models import create_model
+from src.model_pipeline.personalization.splits import split_data
+from src.model_pipeline.personalization.validation import (
     HoldoutValidator,
     ValidationVerdict,
 )
@@ -21,7 +21,9 @@ class TestHoldoutValidator:
         model.fit(split.X_train, split.y_train)
 
         val_pred = model.predict(split.X_val)
-        from model_pipeline.personalization.evaluation import compute_regression_metrics
+        from src.model_pipeline.personalization.evaluation import (
+            compute_regression_metrics,
+        )
 
         val_metrics = compute_regression_metrics(split.y_val.values, val_pred)
 

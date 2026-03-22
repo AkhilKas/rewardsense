@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from model_pipeline.personalization.models import (
+from src.model_pipeline.personalization.models import (
     MeanBaselineRegressor,
     create_model,
     list_models,

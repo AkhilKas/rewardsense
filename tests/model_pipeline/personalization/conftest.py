@@ -110,7 +110,7 @@ def joined_df(users_features_df, transactions_features_df) -> pd.DataFrame:
 def xy_pair(joined_df):
     """(X, y) tuple from the joined fixture — all float64 for ML compatibility."""
     import numpy as np
-    from model_pipeline.personalization.features import (
+    from src.model_pipeline.personalization.features import (
         get_feature_columns,
         TARGET_COLUMN,
     )

@@ -6,7 +6,7 @@ import tempfile
 import pandas as pd
 import pytest
 
-from model_pipeline.personalization.sensitivity.report_generator import (
+from src.model_pipeline.personalization.sensitivity.report_generator import (
     SensitivityReportGenerator,
 )
 

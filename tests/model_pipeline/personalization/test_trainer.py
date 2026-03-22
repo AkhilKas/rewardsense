@@ -2,8 +2,8 @@
 
 import pytest
 
-from model_pipeline.personalization.splits import split_data
-from model_pipeline.personalization.trainer import Trainer, TrainingResult
+from src.model_pipeline.personalization.splits import split_data
+from src.model_pipeline.personalization.trainer import Trainer, TrainingResult
 
 
 class TestTrainer:

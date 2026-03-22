@@ -3,7 +3,7 @@
 import pytest
 from sklearn.ensemble import RandomForestRegressor
 
-from model_pipeline.personalization.sensitivity.shap_analysis import (
+from src.model_pipeline.personalization.sensitivity.shap_analysis import (
     SHAPAnalyzer,
     _is_tree_model,
 )

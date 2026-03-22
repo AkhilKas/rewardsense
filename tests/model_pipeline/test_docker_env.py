@@ -71,7 +71,7 @@ class TestModelPipelinePackage:
 
     def test_model_pipeline_importable(self):
         """model_pipeline package should be on the Python path."""
-        import model_pipeline
+        import src.model_pipeline as model_pipeline
 
         assert hasattr(model_pipeline, "__version__")
         assert model_pipeline.__version__ == "0.1.0"
@@ -93,7 +93,7 @@ class TestModelPipelinePackage:
     )
     def test_train_main_runs_successfully(self):
         """train.main() should execute and exit with code 0."""
-        from model_pipeline.train import main
+        from src.model_pipeline.train import main
 
         with pytest.raises(SystemExit) as exc_info:
             main()

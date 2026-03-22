@@ -79,7 +79,7 @@ def check_packages():
 def check_project_importable():
     """Check that the model_pipeline package is importable."""
     try:
-        import model_pipeline
+        import src.model_pipeline as model_pipeline
 
         return True, f"v{model_pipeline.__version__}"
     except ImportError as e:

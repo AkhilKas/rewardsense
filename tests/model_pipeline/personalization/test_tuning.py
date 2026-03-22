@@ -2,7 +2,7 @@
 
 import pytest
 
-from model_pipeline.personalization.tuning import HyperparameterTuner
+from src.model_pipeline.personalization.tuning import HyperparameterTuner
 
 
 class TestHyperparameterTuner:
