@@ -165,6 +165,8 @@ class SHAPAnalyzer:
         returning raw numeric data instead.
         """
         sv = self.compute_shap_values()
+        if self._explainer is None:
+            raise RuntimeError("SHAP explainer not initialized")
         ev = self._explainer.expected_value
         base_value = float(ev.item()) if hasattr(ev, "item") else float(ev)
         sample_shap = sv[idx]

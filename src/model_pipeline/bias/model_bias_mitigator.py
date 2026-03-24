@@ -313,7 +313,7 @@ class ModelBiasMitigator:
         dict
             Recommended adjustments with rationale.
         """
-        adjustments = {
+        adjustments: Dict[str, Any] = {
             "apply_diversity_penalty": False,
             "issuer_caps": {},
             "rationale": [],
@@ -358,7 +358,7 @@ class ModelBiasMitigator:
         bias_report : ComponentBiasReport
             Output from ExplanationBiasChecker.
         """
-        adjustments = {
+        adjustments: Dict[str, Any] = {
             "modify_prompts": False,
             "suggestions": [],
         }

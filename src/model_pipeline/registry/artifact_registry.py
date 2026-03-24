@@ -355,10 +355,10 @@ class RegistryClient:
         # Upload each file
         for filename, filepath in files_to_upload:
             upload_url = f"{self._generic_base}/{model_name}/{version}/{filename}"
-            with open(filepath, "rb") as f:
+            with open(filepath, "rb") as file_obj:
                 resp = http_requests.put(
                     upload_url,
-                    data=f,
+                    data=file_obj,
                     headers={
                         **headers,
                         "Content-Type": "application/octet-stream",

@@ -188,6 +188,8 @@ class HyperparameterTuner:
 
         X = X_train if X_train is not None else self.X_train
         y = y_train if y_train is not None else self.y_train
+        if X is None or y is None:
+            raise RuntimeError("Training data is required for retrain_best()")
 
         model = create_model(self.model_name, self.best_params)
         model.fit(X, y)

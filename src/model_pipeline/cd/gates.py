@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from src.model_pipeline.registry.artifact_registry import RegistryClient
+from src.model_pipeline.registry.artifact_registry import ModelVersion, RegistryClient
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,11 @@ class BiasGate:
             with open(path) as f:
                 report = json.load(f)
 
-            for metric in report.get("metrics", []):
+            metrics = report.get("metrics")
+            if metrics is None:
+                metrics = report.get("all_metrics", [])
+
+            for metric in metrics:
                 if metric.get("is_biased", False):
                     # Check if it strictly exceeds our max disparity threshold
                     if metric.get("value", 0.0) > self.max_disparity:
@@ -72,7 +76,7 @@ class RegistryGate:
         )
         self.model_name = model_name
 
-    def push(self, local_model_dir: str, version_tag: str) -> str:
+    def push(self, local_model_dir: str, version_tag: str) -> ModelVersion:
         """Push model via client and return the URI."""
         logger.info(f"Pushing {self.model_name} (v{version_tag}) to registry")
         return self.client.push_model(

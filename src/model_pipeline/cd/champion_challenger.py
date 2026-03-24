@@ -3,7 +3,7 @@ Champion-Challenger logic for MLflow.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import mlflow
 
@@ -31,7 +31,7 @@ class ChampionChallenger:
                 return None
 
             # Find runs tagged as 'champion'
-            runs = mlflow.search_runs(
+            runs: Any = mlflow.search_runs(
                 experiment_ids=[experiment.experiment_id],
                 filter_string="tags.model_status = 'champion'",
                 order_by=[

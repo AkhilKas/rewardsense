@@ -3,7 +3,7 @@ Rollback mechanism to revert production tags in the Registry if a model degrades
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import mlflow
 
@@ -38,7 +38,7 @@ class ModelRollbackManager:
             if not experiment:
                 return None
 
-            runs = mlflow.search_runs(
+            runs: Any = mlflow.search_runs(
                 experiment_ids=[experiment.experiment_id],
                 filter_string="tags.model_status = 'champion'",
                 order_by=["start_time DESC"],
