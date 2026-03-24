@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+import requests
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -47,11 +48,25 @@ class NotificationDispatcher:
         )
         webhook_url = os.getenv(webhook_var)
         if not webhook_url:
-            logger.debug("Slack webhook URL not found in environment, skipping.")
+            logger.warning(
+                "Slack webhook URL not found in environment variable '%s', skipping.",
+                webhook_var,
+            )
             return
 
-        # In a real environment, this would do a requests.post to the webhook
-        logger.info(f"==> Mocked Slack payload sent: [{level}] {message}")
+        payload = {"text": f"[RewardSense {level}] {message}"}
+        try:
+            response = requests.post(webhook_url, json=payload, timeout=10)
+            if response.status_code == 200:
+                logger.info("Slack notification sent successfully.")
+            else:
+                logger.warning(
+                    "Slack notification failed: %s %s",
+                    response.status_code,
+                    response.text,
+                )
+        except requests.RequestException as e:
+            logger.warning("Slack notification request failed: %s", e)
 
     def _send_email(self, message: str, level: str) -> None:
         # In a real environment, this would use smtplib

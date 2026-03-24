@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-import os
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.bash import BashOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.task_group import TaskGroup
@@ -25,6 +25,9 @@ with DAG(
     catchup=False,
     tags=["model", "rewardsense", "ml"],
 ) as dag:
+    base_task_env = {
+        "SLACK_WEBHOOK_URL": Variable.get("SLACK_WEBHOOK_URL", default_var="")
+    }
 
     wait_for_data_pipeline = ExternalTaskSensor(
         task_id="wait_for_data_pipeline",
@@ -41,12 +44,16 @@ with DAG(
         data_loading = BashOperator(
             task_id="data_loading",
             bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.data_loader 1>&2; echo "data_loading: OK"',
+            env=base_task_env,
+            append_env=True,
             do_xcom_push=True,
         )
 
         feature_engineering = BashOperator(
             task_id="feature_engineering",
             bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.personalization.features 1>&2; echo "feature_engineering: OK"',
+            env=base_task_env,
+            append_env=True,
             do_xcom_push=True,
         )
 
@@ -58,7 +65,8 @@ with DAG(
             task_id="model_training",
             bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.train 1>&2; echo "model_training: OK"',
             env={
-                "MLFLOW_TRACKING_URI": "https://mlflow-server-760934308287.us-central1.run.app"
+                "MLFLOW_TRACKING_URI": "https://mlflow-server-760934308287.us-central1.run.app",
+                "SLACK_WEBHOOK_URL": Variable.get("SLACK_WEBHOOK_URL", default_var=""),
             },
             append_env=True,
             do_xcom_push=True,
@@ -77,6 +85,8 @@ passed = gate.evaluate(metrics)
 assert passed, f'Validation Gate Failed: {metrics}'
 print(json.dumps({'gate': 'validation', 'passed': True, 'ndcg_at_10': metrics.get('ndcg@10')}))
 " """,
+            env=base_task_env,
+            append_env=True,
             do_xcom_push=True,
         )
 
@@ -90,6 +100,8 @@ passed = gate.evaluate('/tmp/model_pipeline/bias_report.json')
 assert passed, 'Bias Gate Failed'
 print(json.dumps({'gate': 'bias_detection', 'passed': True}))
 " """,
+            env=base_task_env,
+            append_env=True,
             do_xcom_push=True,
         )
 
@@ -108,6 +120,8 @@ gate = RegistryGate('rewardsense-prod', 'us-central1', 'rewardsense-models', 'pe
 result = gate.push('/tmp/model_pipeline/model_artifact', version)
 print(json.dumps({'gate': 'registry_push', 'version': version, 'result': str(result)}))
 " """,
+            env=base_task_env,
+            append_env=True,
             do_xcom_push=True,
         )
 

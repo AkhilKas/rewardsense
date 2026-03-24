@@ -70,6 +70,8 @@ class HyperparameterTuner:
         Number of Optuna trials.
     cv_folds : int
         Cross-validation folds.
+    cv_n_jobs : int
+        Parallel workers for CV evaluation. Defaults to 1 for portability.
     metric : str
         Scoring metric (``"rmse"``).
     random_seed : int
@@ -88,6 +90,7 @@ class HyperparameterTuner:
         search_space: Optional[Dict[str, Dict]] = None,
         n_trials: int = 50,
         cv_folds: int = 5,
+        cv_n_jobs: int = 1,
         metric: str = "rmse",
         random_seed: int = 42,
         use_mlflow: bool = True,
@@ -99,6 +102,7 @@ class HyperparameterTuner:
         self.search_space = search_space or DEFAULT_SEARCH_SPACE
         self.n_trials = n_trials
         self.cv_folds = cv_folds
+        self.cv_n_jobs = cv_n_jobs
         self.metric = metric
         self.random_seed = random_seed
         self.use_mlflow = use_mlflow
@@ -121,7 +125,7 @@ class HyperparameterTuner:
             self.y_train,
             cv=self.cv_folds,
             scoring="neg_root_mean_squared_error",
-            n_jobs=-1,
+            n_jobs=self.cv_n_jobs,
         )
         cv_rmse = float(-scores.mean())
 

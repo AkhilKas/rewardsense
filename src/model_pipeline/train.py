@@ -11,6 +11,7 @@ Executes the ML personalization pipeline:
 
 import sys
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -26,6 +27,24 @@ from src.model_pipeline.personalization.evaluation import compute_ranking_metric
 
 
 def main():
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if tracking_uri:
+        try:
+            import mlflow
+
+            mlflow.set_tracking_uri(tracking_uri)
+            logger.info("Configured MLflow tracking URI: {}", mlflow.get_tracking_uri())
+        except Exception as e:
+            logger.warning(
+                "Failed to configure MLflow tracking URI '{}': {}",
+                tracking_uri,
+                e,
+            )
+    else:
+        logger.warning(
+            "MLFLOW_TRACKING_URI is not set; MLflow may default to local tracking."
+        )
+
     logger.info("Starting model training pipeline")
 
     # 1. Load data via DataPipelineLoader inside DatasetBuilder
