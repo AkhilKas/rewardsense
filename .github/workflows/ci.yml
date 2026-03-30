@@ -189,7 +189,8 @@ jobs:
         pytest tests/integration/test_serving_deployment.py \
           -m integration \
           -v \
-          --tb=short
+          --tb=short \
+          --override-ini="addopts="
       env:
         SERVING_URL: ${{ env.SERVING_URL }}
 
