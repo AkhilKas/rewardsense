@@ -1,0 +1,92 @@
+# ==============================================
+# RewardSense Inference Service
+# ==============================================
+# Serves the FastAPI recommendation + LLM
+# explanation endpoint via uvicorn.
+#
+# Build:
+#   docker build -f Dockerfile.serving -t rewardsense-serving .
+#
+# Run locally:
+#   docker run --rm -p 8080:8080 \
+#     -e EXECUTION_ENV=local \
+#     -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 \
+#     rewardsense-serving
+# ==============================================
+
+FROM python:3.11-slim
+
+# ---- System dependencies ----
+# libgomp1  : required by LightGBM for OpenMP threading
+# curl      : used by the container health-check probe
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Non-root user ----
+RUN groupadd --gid 1001 appgroup \
+    && useradd --uid 1001 --gid appgroup --no-create-home appuser
+
+# ---- Working directory ----
+WORKDIR /app
+
+# ---- Install Python dependencies ----
+# Copy requirements first to leverage Docker layer cache.
+COPY requirements-serving.txt /tmp/requirements-serving.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools \
+    && pip install --no-cache-dir -r /tmp/requirements-serving.txt \
+    && rm /tmp/requirements-serving.txt
+
+# ---- Copy project source ----
+COPY setup.py ./setup.py
+COPY README.md ./README.md
+COPY src/ ./src/
+COPY config/ ./config/
+
+# ---- Install project package ----
+RUN pip install --no-cache-dir -e .
+
+# ---- Ownership ----
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# ---- Environment variables ----
+# Execution environment: "local" or "gcp"
+ENV EXECUTION_ENV=local
+
+# MLflow tracking URI (override in docker-compose / Cloud Run env)
+ENV MLFLOW_TRACKING_URI=http://mlflow-server:5000
+
+# Disable MLflow tracking by default in serving; enable via env override
+ENV ENABLE_MLFLOW_TRACKING=false
+
+# LLM explanations disabled by default; set to "true" + supply GCP creds to enable
+ENV ENABLE_LLM_EXPLANATIONS=false
+
+# GCP settings (override via env or Secret Manager)
+ENV GCP_PROJECT_ID=rewardsense
+ENV VERTEX_LOCATION=us-central1
+ENV LLM_MODEL=gemini-2.5-flash
+
+# Python settings
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+
+# ---- Expose HTTP port ----
+EXPOSE 8080
+
+# ---- Health check ----
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl --fail http://localhost:8080/health || exit 1
+
+# ---- Entrypoint ----
+# `--factory` tells uvicorn to call create_app() on each worker start.
+# Workers default to 1; override via UVICORN_WORKERS env var in production.
+CMD ["uvicorn", "app.server:create_app", \
+     "--factory", \
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--workers", "1", \
+     "--log-level", "info"]

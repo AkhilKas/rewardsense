@@ -160,7 +160,46 @@ jobs:
         fail_ci_if_error: false
 
   # ==================================================================
-  # 4. Model Build - Docker Verification
+  # 4. Serving Smoke Test — post-deploy integration check
+  # Runs on every push to main against the live Cloud Run service.
+  # Story 3.1 will update this job to depend on the deploy job.
+  # ==================================================================
+  serving-smoke-test:
+    name: "Smoke Test: Serving API"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      SERVING_URL: ${{ vars.SERVING_URL || 'https://rewardsense-serving-760934308287.us-central1.run.app' }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install smoke test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pytest
+
+    - name: Run serving smoke tests
+      run: |
+        pytest tests/integration/test_serving_deployment.py \
+          -m integration \
+          -v \
+          --tb=short
+      env:
+        SERVING_URL: ${{ env.SERVING_URL }}
+
+    - name: Notify on smoke test failure
+      if: failure()
+      run: |
+        echo "::error::Serving smoke test failed for $SERVING_URL — check Cloud Run logs."
+
+  # ==================================================================
+  # 5. Model Build - Docker Verification
   # ==================================================================
   model-build:
     name: "Build: Model Docker Image"
