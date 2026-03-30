@@ -87,7 +87,8 @@ def serving_url() -> str:
     url = SERVING_URL.rstrip("/")
     try:
         resp = requests.get(f"{url}/health", timeout=REQUEST_TIMEOUT)
-        if resp.status_code == 404:
+        is_json = resp.headers.get("content-type", "").startswith("application/json")
+        if resp.status_code == 404 or not is_json:
             pytest.skip(
                 f"Serving API not yet deployed at {url} "
                 "(placeholder image still running — complete Epic 2 first)"
