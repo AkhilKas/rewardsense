@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -13,7 +14,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,7 +22,20 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.model_pipeline.scoring.card_ranker import CardRanker
 from src.model_pipeline.scoring.merchant_mapper import MerchantCategoryMapper
 from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
+from src.serving.inference_logger import build_log_record, log_inference
 from src.serving.model_loader import get_model, get_model_version
+
+# ---------------------------------------------------------------------------
+# Lazy LLM imports — only needed when ENABLE_LLM_EXPLANATIONS is set
+# ---------------------------------------------------------------------------
+try:
+    from src.model_pipeline.llm.explanation_generator import ExplanationGenerator
+    from src.model_pipeline.llm.prompt_builder import ExplanationType
+    from src.model_pipeline.llm.vertex_gemini_client import VertexGeminiClient
+
+    LLM_MODULES_AVAILABLE = True
+except ImportError:
+    LLM_MODULES_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +63,22 @@ DEFAULT_CATALOG_PATH = (
     / "offers"
     / "merged_cards.json"
 )
+
+# LLM explanation configuration (Story 2.4)
+ENABLE_LLM_EXPLANATIONS: bool = os.getenv(
+    "ENABLE_LLM_EXPLANATIONS", "false"
+).lower() in (
+    "1",
+    "true",
+    "yes",
+)
+LLM_EXPLANATION_TIMEOUT_SEC: float = float(
+    os.getenv("LLM_EXPLANATION_TIMEOUT_SEC", "5.0")
+)
+LLM_TOP_N_EXPLANATIONS: int = int(os.getenv("LLM_TOP_N_EXPLANATIONS", "3"))
+
+# Module-level LLM singleton (initialised lazily)
+_explanation_generator: Optional[ExplanationGenerator] = None  # type: ignore[type-arg]
 
 CURATED_CARD_CATALOG: List[Dict[str, Any]] = [
     {
@@ -621,10 +651,11 @@ def _anonymize_user_id(user_id: str) -> str:
     return hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
 
 
-def _build_explanation(
+def _build_template_explanation(
     card: Dict[str, Any],
     spending_categories: Dict[str, float],
 ) -> str:
+    """Deterministic template-based explanation fallback."""
     reward_rates = card.get("reward_rates", {})
     category_bonuses = reward_rates.get("category_bonuses", {})
 
@@ -640,6 +671,136 @@ def _build_explanation(
 
     base_rate = float(reward_rates.get("universal_base_rate", 1.0))
     return f"Consistent base rewards card with {base_rate:.1f}% return."
+
+
+def _get_explanation_generator() -> Optional[Any]:
+    """Lazily initialise the LLM ExplanationGenerator singleton."""
+    global _explanation_generator
+    if _explanation_generator is not None:
+        return _explanation_generator
+    if not LLM_MODULES_AVAILABLE or not ENABLE_LLM_EXPLANATIONS:
+        return None
+    try:
+        client = VertexGeminiClient(
+            timeout_sec=LLM_EXPLANATION_TIMEOUT_SEC,
+        )
+        _explanation_generator = ExplanationGenerator(
+            llm_client=client,
+            enforce_quality=True,
+        )
+        logger.info("LLM ExplanationGenerator initialised.")
+        return _explanation_generator
+    except Exception as exc:
+        logger.warning("Could not initialise LLM ExplanationGenerator: %s", exc)
+        return None
+
+
+async def _generate_single_llm_explanation(
+    generator: Any,
+    card: Dict[str, Any],
+    spending_categories: Dict[str, float],
+    user_profile: Dict[str, Any],
+) -> Tuple[str, float]:
+    """Generate one LLM explanation in a thread-pool executor; returns (text, latency_ms)."""
+    start = time.perf_counter()
+
+    scoring_output = {
+        "best_card": {
+            "card_name": card.get("card_name", ""),
+            "card_id": card.get("card_id", ""),
+            "reward_rate": card.get("reward_rates", {}).get("universal_base_rate", 1.0),
+            "deterministic_score": card.get("deterministic_score", 0.0),
+            "personalization_score": card.get("personalization_score", 0.0),
+            "blended_score": card.get("blended_score", 0.0),
+        },
+        "transaction": {
+            "merchant": "user_profile",
+            "category": (
+                max(spending_categories, key=spending_categories.get)
+                if spending_categories
+                else "general"
+            ),
+        },
+        "candidate_card": {
+            "card_name": card.get("card_name", ""),
+        },
+    }
+    personalization_signals = {
+        "spending_categories": spending_categories,
+        "preferred_rewards": user_profile.get("preferred_rewards", []),
+    }
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: generator.generate(
+                    explanation_type=ExplanationType.NEW_CARD_RECOMMENDATION,
+                    scoring_output=scoring_output,
+                    personalization_signals=personalization_signals,
+                ),
+            ),
+            timeout=LLM_EXPLANATION_TIMEOUT_SEC,
+        )
+        explanation_text = result.summary
+        if result.rationale:
+            explanation_text += " " + " ".join(result.rationale)
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        return explanation_text, latency_ms
+    except (asyncio.TimeoutError, Exception) as exc:
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        logger.warning(
+            "LLM explanation failed for %s (%.1fms): %s",
+            card.get("card_name", "unknown"),
+            latency_ms,
+            exc,
+        )
+        # Return template fallback
+        fallback = _build_template_explanation(card, spending_categories)
+        return fallback, latency_ms
+
+
+async def _generate_llm_explanations(
+    cards: List[Dict[str, Any]],
+    spending_categories: Dict[str, float],
+    user_profile: Dict[str, Any],
+    top_n: int = 3,
+) -> Tuple[Dict[str, str], float]:
+    """Generate LLM explanations for the top-N cards concurrently.
+
+    Returns a dict mapping card_name -> explanation text, and total LLM latency.
+    Falls back to template explanations on failure.
+    """
+    generator = _get_explanation_generator()
+    if generator is None:
+        return {}, 0.0
+
+    top_cards = cards[:top_n]
+    tasks = [
+        _generate_single_llm_explanation(
+            generator, card, spending_categories, user_profile
+        )
+        for card in top_cards
+    ]
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    explanations: Dict[str, str] = {}
+    total_latency = 0.0
+    for card, result in zip(top_cards, results):
+        card_name = card.get("card_name", "")
+        if isinstance(result, Exception):
+            logger.warning("LLM explanation exception for %s: %s", card_name, result)
+            explanations[card_name] = _build_template_explanation(
+                card, spending_categories
+            )
+        else:
+            text, latency = result
+            explanations[card_name] = text
+            total_latency = max(total_latency, latency)
+
+    return explanations, total_latency
 
 
 def _score_profile(
@@ -725,7 +886,7 @@ def _score_profile(
             card_name=card.get("card_name", ""),
             score=round(float(card.get("blended_score", 0.0)), 4),
             rank=int(card.get("rank", index + 1)),
-            explanation=_build_explanation(card, normalized_categories),
+            explanation=_build_template_explanation(card, normalized_categories),
             deterministic_score=round(float(card.get("deterministic_score", 0.0)), 4),
             personalization_score=round(
                 float(card.get("personalization_score", 0.0)), 4
@@ -779,11 +940,64 @@ def health() -> HealthResponse:
 
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
-    """Run deterministic scoring across all available cards for one user profile."""
+async def predict(
+    payload: PredictionRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> PredictionResponse:
+    """Run scoring, LLM explanations, and inference logging for one user profile."""
     recommendations, stage_latency_ms, total_ms, telemetry = _score_profile(payload)
     request_id = getattr(request.state, "request_id", "unknown")
     user_hash = _anonymize_user_id(payload.user_id)
+
+    # --- Story 2.4: LLM Explanation Integration ---
+    explanation_latency_ms: float = 0.0
+    if ENABLE_LLM_EXPLANATIONS and LLM_MODULES_AVAILABLE:
+        # Re-compute normalized categories for explanation context
+        normalized_categories, _ = _normalize_spending_categories(
+            payload.spending_categories
+        )
+        user_profile = {
+            "preferred_rewards": payload.preferred_rewards,
+            "monthly_spend": payload.monthly_spend,
+        }
+        # Get the ranked card aggregates for explanation context
+        ranked_card_dicts = telemetry.get("scores", [])
+        # Build card dicts with full info from telemetry scores
+        explanation_cards = []
+        for score_entry in ranked_card_dicts[:LLM_TOP_N_EXPLANATIONS]:
+            card_dict = dict(score_entry)
+            # Find full card info from catalog
+            for catalog_card in CARD_CATALOG:
+                if catalog_card.get("card_name") == score_entry.get("card_name"):
+                    card_dict["reward_rates"] = catalog_card.get("reward_rates", {})
+                    card_dict["card_id"] = catalog_card.get("card_id", "")
+                    card_dict["annual_fee"] = catalog_card.get("annual_fee", 0.0)
+                    break
+            explanation_cards.append(card_dict)
+
+        llm_explanations, explanation_latency_ms = await _generate_llm_explanations(
+            cards=explanation_cards,
+            spending_categories=normalized_categories,
+            user_profile=user_profile,
+            top_n=LLM_TOP_N_EXPLANATIONS,
+        )
+
+        # Overlay LLM explanations onto recommendations
+        if llm_explanations:
+            for rec in recommendations:
+                if rec.card_name in llm_explanations:
+                    rec = rec.model_copy(
+                        update={"explanation": llm_explanations[rec.card_name]}
+                    )
+                    # Update in-place by index
+                    for idx, r in enumerate(recommendations):
+                        if r.card_name == rec.card_name:
+                            recommendations[idx] = rec
+                            break
+
+        total_ms += explanation_latency_ms
+        stage_latency_ms["llm_explanation"] = round(explanation_latency_ms, 3)
 
     logger.info(
         "predict_scoring request_id=%s user_hash=%s categories=%s unknown_categories=%s "
@@ -805,8 +1019,30 @@ def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
         telemetry["personalization_error"],
     )
 
+    # --- Story 2.5: Inference Logging for Monitoring ---
+    model_version = get_model_version() or "unloaded"
+    log_record = build_log_record(
+        request_id=request_id,
+        user_hash=user_hash,
+        input_features={
+            "spending_categories": payload.spending_categories,
+            "monthly_spend": payload.monthly_spend,
+            "preferred_rewards": payload.preferred_rewards,
+            "transaction_history_count": len(payload.transaction_history),
+        },
+        scores=telemetry.get("scores", []),
+        top_card=(recommendations[0].card_name if recommendations else "none"),
+        model_version=model_version,
+        latency_breakdown=stage_latency_ms,
+        is_personalized=telemetry.get("is_personalized", False),
+        explanation_latency_ms=(
+            explanation_latency_ms if explanation_latency_ms > 0 else None
+        ),
+    )
+    background_tasks.add_task(log_inference, log_record)
+
     return PredictionResponse(
         recommended_cards=recommendations,
-        model_version=get_model_version() or "unloaded",
+        model_version=model_version,
         inference_latency_ms=round(total_ms, 3),
     )

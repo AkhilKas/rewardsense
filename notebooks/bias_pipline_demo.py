@@ -151,7 +151,7 @@ print(f"Columns: {list(features_df.columns[:20])}...")
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score
 
 # Target: predict user's top spending category (simulates personalization)
 # This is a stand-in for the actual personalization model (Member D's work)
@@ -228,7 +228,7 @@ y_pred_proba = model.predict_proba(X_test)
 
 acc = accuracy_score(y_test, y_pred)
 f1 = f1_score(y_test, y_pred, average="weighted")
-print(f"\nModel Performance:")
+print("\nModel Performance:")
 print(f"  Accuracy: {acc:.4f}")
 print(f"  F1 (weighted): {f1:.4f}")
 
@@ -286,7 +286,7 @@ with tracker.start_run(run_name="xgboost-personalization-v1") as run:
 
     run_id = tracker.active_run_id
     print(f"\nMLflow Run ID: {run_id}")
-    print(f"View at: http://localhost:5000/#/experiments/")
+    print("View at: http://localhost:5000/#/experiments/")
 
 # %% [markdown]
 # ## 6. Run Slice Evaluation (Story 6.1)
@@ -320,14 +320,14 @@ slice_report = evaluator.evaluate(
 )
 
 print(f"\n{'='*60}")
-print(f"SLICE EVALUATION REPORT")
+print("SLICE EVALUATION REPORT")
 print(f"{'='*60}")
 print(f"Overall metrics: {slice_report.overall_metrics}")
 print(f"Total slices: {len(slice_report.slices)}")
 print(f"Disparities found: {len(slice_report.disparities)}")
 
 if slice_report.disparities:
-    print(f"\nDisparities:")
+    print("\nDisparities:")
     for d in slice_report.disparities[:5]:
         print(
             f"  {d['slice']}: {d['metric']}={d['slice_value']:.4f} "
@@ -367,10 +367,10 @@ model_bias_report = detector.detect(
 )
 
 print(f"\n{'='*60}")
-print(f"MODEL BIAS DETECTION REPORT")
+print("MODEL BIAS DETECTION REPORT")
 print(f"{'='*60}")
 print(f"Summary: {model_bias_report.summary}")
-print(f"\nAll metrics:")
+print("\nAll metrics:")
 for m in model_bias_report.metrics:
     status = "FLAGGED" if m.is_biased else "PASS"
     print(
@@ -379,7 +379,7 @@ for m in model_bias_report.metrics:
     )
 
 if model_bias_report.per_group_metrics:
-    print(f"\nPer-group breakdowns:")
+    print("\nPer-group breakdowns:")
     for feat, groups in model_bias_report.per_group_metrics.items():
         print(f"  {feat}: {groups}")
 
@@ -421,7 +421,7 @@ scoring_checker = ScoringBiasChecker(issuer_disparity_threshold=0.15)
 scoring_report = scoring_checker.check_issuer_bias(recommendations_df, "archetype")
 
 print(f"\n{'='*60}")
-print(f"SCORING ENGINE BIAS REPORT")
+print("SCORING ENGINE BIAS REPORT")
 print(f"{'='*60}")
 print(f"Summary: {scoring_report.summary}")
 for m in scoring_report.metrics:
@@ -464,7 +464,7 @@ explanation_report = explanation_checker.check_quality_consistency(
 )
 
 print(f"\n{'='*60}")
-print(f"LLM EXPLANATION BIAS REPORT")
+print("LLM EXPLANATION BIAS REPORT")
 print(f"{'='*60}")
 print(f"Summary: {explanation_report.summary}")
 for m in explanation_report.metrics:
@@ -519,10 +519,10 @@ cf_report = analyzer.analyze_batch(
 )
 
 print(f"\n{'='*60}")
-print(f"COUNTERFACTUAL FAIRNESS REPORT")
+print("COUNTERFACTUAL FAIRNESS REPORT")
 print(f"{'='*60}")
 print(f"Summary: {cf_report.summary}")
-print(f"\nPer-feature sensitivity:")
+print("\nPer-feature sensitivity:")
 for feat, rate in cf_report.per_feature_sensitivity.items():
     flag = " ← SENSITIVE" if rate > 0.05 else ""
     print(f"  {feat}: {rate:.1%} of users affected{flag}")
@@ -567,12 +567,12 @@ print("Recorded bias report for v2.0.0")
 drift = monitor.compare("1.0.0", "2.0.0", model_name="personalization")
 
 print(f"\n{'='*60}")
-print(f"BIAS DRIFT REPORT: v1.0.0 → v2.0.0")
+print("BIAS DRIFT REPORT: v1.0.0 → v2.0.0")
 print(f"{'='*60}")
 print(f"Summary: {drift.summary}")
 
 if drift.has_regression:
-    print(f"\n⚠ REGRESSIONS DETECTED:")
+    print("\n⚠ REGRESSIONS DETECTED:")
     for m in drift.regressions:
         print(
             f"  {m.name} ({m.sensitive_feature}): "
@@ -583,7 +583,7 @@ else:
     print("\nNo fairness regressions detected.")
 
 if drift.improvements:
-    print(f"\nImprovements:")
+    print("\nImprovements:")
     for m in drift.improvements:
         print(
             f"  {m.name} ({m.sensitive_feature}): "
@@ -623,7 +623,7 @@ report_path = exporter.export_full_report(
 )
 
 print(f"\n{'='*60}")
-print(f"FULL BIAS REPORT EXPORTED")
+print("FULL BIAS REPORT EXPORTED")
 print(f"{'='*60}")
 print(f"HTML: {report_path}")
 print(f"Open in browser: file://{report_path.resolve()}")
@@ -700,19 +700,19 @@ print(f"SHA-256: {mv.sha256}")
 
 # %%
 print(f"\n{'='*60}")
-print(f"PIPELINE COMPLETE")
+print("PIPELINE COMPLETE")
 print(f"{'='*60}")
-print(f"\nMLflow UI:    http://localhost:5000")
+print("\nMLflow UI:    http://localhost:5000")
 print(
     f"HTML Report:  file://{(PROJECT_ROOT / 'reports' / 'full_bias_report.html').resolve()}"
 )
 print(
     f"Drift Charts: file://{(PROJECT_ROOT / 'reports' / 'drift_trend.png').resolve()}"
 )
-print(f"\nRun IDs logged — check MLflow Artifacts tab for:")
-print(f"  - bias_summary_*.png")
-print(f"  - fairness_groups_*.png")
-print(f"  - slice_metrics.png")
-print(f"  - slice_disparity_heatmap.png")
-print(f"  - counterfactual_sensitivity.png")
-print(f"  - bias_drift_*.png")
+print("\nRun IDs logged — check MLflow Artifacts tab for:")
+print("  - bias_summary_*.png")
+print("  - fairness_groups_*.png")
+print("  - slice_metrics.png")
+print("  - slice_disparity_heatmap.png")
+print("  - counterfactual_sensitivity.png")
+print("  - bias_drift_*.png")
