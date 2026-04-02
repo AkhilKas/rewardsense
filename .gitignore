@@ -152,3 +152,8 @@ data/bias_history/
 # Model cache
 .model_cache/
 models/*.pkl
+
+# Monitoring demo artifacts
+data/reference/
+data/demo_inference_logs/
+data/monitoring/
