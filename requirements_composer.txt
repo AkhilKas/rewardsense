@@ -35,3 +35,6 @@ fairlearn>=0.10.0
 celery==5.4.0
 kombu==5.3.7
 click==8.1.7
+
+# Monitoring & Drift Detection
+evidently>=0.4.0,<1.0.0
