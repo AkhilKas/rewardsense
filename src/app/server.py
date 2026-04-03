@@ -250,13 +250,23 @@ _DEFAULT_CARDS: List[Dict[str, Any]] = [
     {
         "card_id": "chase_sapphire_preferred",
         "card_name": "Chase Sapphire Preferred",
-        "reward_rates": {"dining": 3.0, "travel": 2.0, "groceries": 1.0, "universal_base_rate": 1.0},
+        "reward_rates": {
+            "dining": 3.0,
+            "travel": 2.0,
+            "groceries": 1.0,
+            "universal_base_rate": 1.0,
+        },
         "annual_fee": 95,
     },
     {
         "card_id": "amex_gold",
         "card_name": "Amex Gold",
-        "reward_rates": {"dining": 4.0, "groceries": 4.0, "travel": 3.0, "universal_base_rate": 1.0},
+        "reward_rates": {
+            "dining": 4.0,
+            "groceries": 4.0,
+            "travel": 3.0,
+            "universal_base_rate": 1.0,
+        },
         "annual_fee": 250,
     },
     {
@@ -389,7 +399,9 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
                 "merchant": txn.get("merchant", "unknown"),
             }
         elif payload.spending_categories:
-            dominant = max(payload.spending_categories, key=payload.spending_categories.get)
+            dominant = max(
+                payload.spending_categories, key=payload.spending_categories.get
+            )
             transaction = {
                 "amount": float(payload.spending_categories[dominant]),
                 "category": dominant,
@@ -405,7 +417,9 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
             )
             ranked = result.get("ranked", [])
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Scoring failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Scoring failed: {exc}"
+            ) from exc
 
         recommended_cards = [
             PredictedCard(
@@ -416,7 +430,9 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
             for i, card in enumerate(ranked)
         ]
         scores = {c.card_name: c.score for c in recommended_cards}
-        return PredictResponse(recommended_cards=recommended_cards, scores=scores, explanation=None)
+        return PredictResponse(
+            recommended_cards=recommended_cards, scores=scores, explanation=None
+        )
 
     @app.post("/recommend", response_model=RecommendResponse)
     def recommend(payload: RecommendRequest) -> RecommendResponse:
