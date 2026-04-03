@@ -80,7 +80,9 @@ LLM_TOP_N_EXPLANATIONS: int = int(os.getenv("LLM_TOP_N_EXPLANATIONS", "3"))
 # Monitoring endpoint configuration
 GCS_MONITORING_BUCKET: str = os.getenv("MONITORING_BUCKET", "rewardsense-monitoring")
 DRIFT_REPORT_PREFIX: str = os.getenv("DRIFT_REPORT_PREFIX", "drift-reports")
-PERFORMANCE_SNAPSHOT_PREFIX: str = os.getenv("PERFORMANCE_PREFIX", "performance-snapshots")
+PERFORMANCE_SNAPSHOT_PREFIX: str = os.getenv(
+    "PERFORMANCE_PREFIX", "performance-snapshots"
+)
 LOCAL_DRIFT_DIR: Path = Path(
     os.getenv("LOCAL_DRIFT_DIR", "data/monitoring/drift-reports")
 )
@@ -1009,9 +1011,7 @@ def _score_profile(
             ),
             annual_fee=round(float(card.get("annual_fee", 0.0)), 2),
             reward_rate=round(
-                float(
-                    card.get("reward_rates", {}).get("universal_base_rate", 0.0)
-                ),
+                float(card.get("reward_rates", {}).get("universal_base_rate", 0.0)),
                 2,
             ),
             key_benefits=card.get("key_benefits", []),
@@ -1113,10 +1113,9 @@ def _load_monitoring_data() -> MonitoringResponse:
     deploy_time = datetime.now(timezone.utc) - timedelta(seconds=uptime)
 
     # --- Drift data ---
-    drift_data = (
-        _find_latest_json(LOCAL_DRIFT_DIR, "data_drift_")
-        or _find_latest_json_gcs(f"{DRIFT_REPORT_PREFIX}/")
-    )
+    drift_data = _find_latest_json(
+        LOCAL_DRIFT_DIR, "data_drift_"
+    ) or _find_latest_json_gcs(f"{DRIFT_REPORT_PREFIX}/")
 
     drift_check = MonitoringDriftCheck()
     if drift_data:
@@ -1126,17 +1125,18 @@ def _load_monitoring_data() -> MonitoringResponse:
 
         per_feature = drift_data.get("per_feature_drift", {})
         drift_check.feature_drift = {
-            feature: float(data.get("drift_score", 0.0))
-            if isinstance(data, dict)
-            else float(data)
+            feature: (
+                float(data.get("drift_score", 0.0))
+                if isinstance(data, dict)
+                else float(data)
+            )
             for feature, data in per_feature.items()
         }
 
     # --- Performance data ---
-    perf_data = (
-        _find_latest_json(LOCAL_PERFORMANCE_DIR, "performance_")
-        or _find_latest_json_gcs(f"{PERFORMANCE_SNAPSHOT_PREFIX}/")
-    )
+    perf_data = _find_latest_json(
+        LOCAL_PERFORMANCE_DIR, "performance_"
+    ) or _find_latest_json_gcs(f"{PERFORMANCE_SNAPSHOT_PREFIX}/")
 
     serving_metrics = MonitoringServingMetrics()
     if perf_data:

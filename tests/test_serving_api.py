@@ -4,7 +4,6 @@ Comprehensive tests for the RewardSense Serving API.
 Covers /health, /predict, /monitoring endpoints and CORS configuration.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.serving.app import app
@@ -67,7 +66,9 @@ class TestPredictEndpoint:
         data = client.post("/predict", json=VALID_PREDICT_PAYLOAD).json()
         for card in data["recommended_cards"]:
             missing = CARD_REQUIRED_FIELDS - set(card.keys())
-            assert not missing, f"Card '{card.get('card_name')}' missing fields: {missing}"
+            assert (
+                not missing
+            ), f"Card '{card.get('card_name')}' missing fields: {missing}"
 
     def test_cards_ranked_in_order(self):
         data = client.post("/predict", json=VALID_PREDICT_PAYLOAD).json()
@@ -78,17 +79,17 @@ class TestPredictEndpoint:
         data = client.post("/predict", json=VALID_PREDICT_PAYLOAD).json()
         for card in data["recommended_cards"]:
             assert isinstance(card["key_benefits"], list)
-            assert len(card["key_benefits"]) > 0, (
-                f"Card '{card['card_name']}' has empty key_benefits"
-            )
+            assert (
+                len(card["key_benefits"]) > 0
+            ), f"Card '{card['card_name']}' has empty key_benefits"
 
     def test_card_issuer_nonempty(self):
         data = client.post("/predict", json=VALID_PREDICT_PAYLOAD).json()
         for card in data["recommended_cards"]:
             assert isinstance(card["issuer"], str)
-            assert len(card["issuer"]) > 0, (
-                f"Card '{card['card_name']}' has empty issuer"
-            )
+            assert (
+                len(card["issuer"]) > 0
+            ), f"Card '{card['card_name']}' has empty issuer"
 
     def test_missing_user_id_returns_422(self):
         payload = {
@@ -147,7 +148,12 @@ class TestMonitoringEndpoint:
     def test_serving_metrics_fields(self):
         data = client.get("/monitoring").json()
         m = data["serving_metrics"]
-        for field in ("request_count", "avg_latency_ms", "error_rate", "p95_latency_ms"):
+        for field in (
+            "request_count",
+            "avg_latency_ms",
+            "error_rate",
+            "p95_latency_ms",
+        ):
             assert field in m, f"serving_metrics missing '{field}'"
 
     def test_retrain_history_is_list(self):
