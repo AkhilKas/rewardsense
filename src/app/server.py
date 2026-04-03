@@ -240,6 +240,46 @@ def build_default_service() -> RewardSenseService:
     )
 
 
+# ---------------------------------------------------------------------------
+# Default card catalog — shipped with the container.
+# Used by /predict when the caller does not supply an explicit portfolio.
+# Format matches what RewardCalculator expects (card_id, card_name,
+# reward_rates dict, annual_fee).
+# ---------------------------------------------------------------------------
+_DEFAULT_CARDS: List[Dict[str, Any]] = [
+    {
+        "card_id": "chase_sapphire_preferred",
+        "card_name": "Chase Sapphire Preferred",
+        "reward_rates": {"dining": 3.0, "travel": 2.0, "groceries": 1.0, "universal_base_rate": 1.0},
+        "annual_fee": 95,
+    },
+    {
+        "card_id": "amex_gold",
+        "card_name": "Amex Gold",
+        "reward_rates": {"dining": 4.0, "groceries": 4.0, "travel": 3.0, "universal_base_rate": 1.0},
+        "annual_fee": 250,
+    },
+    {
+        "card_id": "citi_double_cash",
+        "card_name": "Citi Double Cash",
+        "reward_rates": {"universal_base_rate": 2.0},
+        "annual_fee": 0,
+    },
+    {
+        "card_id": "capital_one_venture",
+        "card_name": "Capital One Venture",
+        "reward_rates": {"travel": 5.0, "universal_base_rate": 2.0},
+        "annual_fee": 95,
+    },
+    {
+        "card_id": "discover_it",
+        "card_name": "Discover it Cash Back",
+        "reward_rates": {"universal_base_rate": 1.0},
+        "annual_fee": 0,
+    },
+]
+
+
 if FASTAPI_AVAILABLE:
 
     class StrictBaseModel(BaseModel):
@@ -303,6 +343,23 @@ if FASTAPI_AVAILABLE:
         explanation: Optional[ExplanationResponse] = None
         llm_explanations_enabled: bool
 
+    class PredictRequest(BaseModel):
+        user_id: str
+        spending_categories: Dict[str, float]
+        monthly_spend: float
+        preferred_rewards: Optional[List[str]] = None
+        transaction_history: Optional[List[Dict[str, Any]]] = None
+
+    class PredictedCard(StrictBaseModel):
+        card_name: str
+        score: float
+        rank: int
+
+    class PredictResponse(StrictBaseModel):
+        recommended_cards: List[PredictedCard]
+        scores: Dict[str, float]
+        explanation: Optional[ExplanationResponse] = None
+
 
 def create_app(service: Optional[RewardSenseService] = None) -> Any:
     """Create a FastAPI app exposing recommendation endpoints."""
@@ -315,8 +372,51 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
     runtime_service = service or build_default_service()
 
     @app.get("/health")
-    def health() -> Dict[str, str]:
-        return {"status": "ok"}
+    def health() -> Dict[str, Any]:
+        return {
+            "status": "healthy",
+            "model_version": os.getenv("MODEL_VERSION", "unknown"),
+        }
+
+    @app.post("/predict", response_model=PredictResponse)
+    def predict(payload: PredictRequest) -> PredictResponse:
+        # Build a single transaction from history or dominant spending category
+        if payload.transaction_history:
+            txn = payload.transaction_history[0]
+            transaction: Dict[str, Any] = {
+                "amount": float(txn.get("amount", 100.0)),
+                "category": txn.get("category", "other"),
+                "merchant": txn.get("merchant", "unknown"),
+            }
+        elif payload.spending_categories:
+            dominant = max(payload.spending_categories, key=payload.spending_categories.get)
+            transaction = {
+                "amount": float(payload.spending_categories[dominant]),
+                "category": dominant,
+                "merchant": f"{dominant}-merchant",
+            }
+        else:
+            transaction = {"amount": 100.0, "category": "other", "merchant": "unknown"}
+
+        try:
+            result = runtime_service.scorer.score(
+                portfolio=_DEFAULT_CARDS,
+                transaction=transaction,
+            )
+            ranked = result.get("ranked", [])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Scoring failed: {exc}") from exc
+
+        recommended_cards = [
+            PredictedCard(
+                card_name=card.get("card_name", "Unknown"),
+                score=round(float(card.get("reward_amount", 0.0)), 4),
+                rank=int(card.get("rank", i + 1)),
+            )
+            for i, card in enumerate(ranked)
+        ]
+        scores = {c.card_name: c.score for c in recommended_cards}
+        return PredictResponse(recommended_cards=recommended_cards, scores=scores, explanation=None)
 
     @app.post("/recommend", response_model=RecommendResponse)
     def recommend(payload: RecommendRequest) -> RecommendResponse:
