@@ -1,10 +1,14 @@
+import logging
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.task_group import TaskGroup
+
+logger = logging.getLogger("airflow.task")
 
 # Default arguments for the DAG
 default_args = {
@@ -15,6 +19,67 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
 }
+
+def _trigger_serving_redeploy(**context):
+    """Dispatch the serving_redeploy GitHub Actions workflow.
+
+    Determines trigger_source from dag_run.conf so the audit log
+    distinguishes between:
+      - model_pipeline   : weekly scheduled training run
+      - retrain_pipeline : monitoring-triggered retrain
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    ti = context["ti"]
+    dag_run = context["dag_run"]
+
+    # Determine who originally triggered this pipeline run
+    conf = dag_run.conf or {}
+    triggered_by = conf.get("triggered_by", "")
+    trigger_source = "retrain_pipeline" if "monitoring" in triggered_by else "model_pipeline"
+
+    github_token = Variable.get("GITHUB_TOKEN")
+    github_owner = Variable.get("GITHUB_OWNER", default_var="Raul2008NEU")
+    github_repo = Variable.get("GITHUB_REPO", default_var="rewardsense")
+
+    url = (
+        f"https://api.github.com/repos/{github_owner}/{github_repo}"
+        f"/actions/workflows/serving_redeploy.yml/dispatches"
+    )
+    payload = _json.dumps(
+        {"ref": "main", "inputs": {"trigger_source": trigger_source}}
+    ).encode()
+
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            http_status = resp.status
+    except urllib.error.HTTPError as exc:
+        logger.error("GitHub dispatch API error: %s %s", exc.code, exc.reason)
+        raise
+
+    logger.info(
+        "Dispatched serving_redeploy workflow (trigger_source=%s, http_status=%d)",
+        trigger_source,
+        http_status,
+    )
+
+    ti.xcom_push(key="trigger_source", value=trigger_source)
+    ti.xcom_push(key="github_dispatch_status", value=http_status)
+    return {"status": "dispatched", "trigger_source": trigger_source, "http_status": http_status}
+
 
 with DAG(
     "rewardsense_model_pipeline",
@@ -125,5 +190,16 @@ print(json.dumps({'gate': 'registry_push', 'version': version, 'result': str(res
             do_xcom_push=True,
         )
 
+    # ── Serving Redeployment ──────────────────────────────────────────
+    trigger_redeploy = PythonOperator(
+        task_id="trigger_serving_redeploy",
+        python_callable=_trigger_serving_redeploy,
+        doc_md=(
+            "Dispatch the serving_redeploy GitHub Actions workflow so the "
+            "Cloud Run service restarts and loads the newly promoted MLflow model. "
+            "Requires GITHUB_TOKEN Airflow Variable (PAT with `workflow` scope)."
+        ),
+    )
+
     # DAG execution order
-    wait_for_data_pipeline >> data_prep >> model_dev >> quality_gates >> deployment
+    wait_for_data_pipeline >> data_prep >> model_dev >> quality_gates >> deployment >> trigger_redeploy
