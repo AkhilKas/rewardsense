@@ -77,6 +77,17 @@ LLM_EXPLANATION_TIMEOUT_SEC: float = float(
 )
 LLM_TOP_N_EXPLANATIONS: int = int(os.getenv("LLM_TOP_N_EXPLANATIONS", "3"))
 
+# Monitoring endpoint configuration
+GCS_MONITORING_BUCKET: str = os.getenv("MONITORING_BUCKET", "rewardsense-monitoring")
+DRIFT_REPORT_PREFIX: str = os.getenv("DRIFT_REPORT_PREFIX", "drift-reports")
+PERFORMANCE_SNAPSHOT_PREFIX: str = os.getenv("PERFORMANCE_PREFIX", "performance-snapshots")
+LOCAL_DRIFT_DIR: Path = Path(
+    os.getenv("LOCAL_DRIFT_DIR", "data/monitoring/drift-reports")
+)
+LOCAL_PERFORMANCE_DIR: Path = Path(
+    os.getenv("LOCAL_SNAPSHOT_DIR", "data/monitoring/performance")
+)
+
 # Module-level LLM singleton (initialised lazily)
 _explanation_generator: Optional[ExplanationGenerator] = None  # type: ignore[type-arg]
 
@@ -84,66 +95,116 @@ CURATED_CARD_CATALOG: List[Dict[str, Any]] = [
     {
         "card_id": "amex_gold",
         "card_name": "Amex Gold Card",
+        "issuer": "American Express",
         "annual_fee": 250.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
             "category_bonuses": {"dining": 4.0, "groceries": 4.0},
         },
+        "key_benefits": [
+            "4x on dining",
+            "4x on groceries",
+            "$120 dining credit",
+            "$120 Uber credit",
+        ],
     },
     {
         "card_id": "chase_sapphire_preferred",
         "card_name": "Chase Sapphire Preferred",
+        "issuer": "Chase",
         "annual_fee": 95.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
             "category_bonuses": {"travel": 3.0, "dining": 3.0},
         },
+        "key_benefits": [
+            "3x on dining",
+            "2x on travel",
+            "$50 hotel credit",
+            "Trip cancellation insurance",
+        ],
     },
     {
         "card_id": "capital_one_venture_x",
         "card_name": "Capital One Venture X",
+        "issuer": "Capital One",
         "annual_fee": 395.0,
         "reward_rates": {
             "universal_base_rate": 2.0,
             "category_bonuses": {"travel": 5.0},
         },
+        "key_benefits": [
+            "2x on everything",
+            "5x on travel",
+            "$300 travel credit",
+            "Airport lounge access",
+        ],
     },
     {
         "card_id": "citi_double_cash",
         "card_name": "Citi Double Cash",
+        "issuer": "Citi",
         "annual_fee": 0.0,
         "reward_rates": {"universal_base_rate": 2.0},
+        "key_benefits": [
+            "2% on everything",
+            "No annual fee",
+            "0% intro APR",
+            "Citi Entertainment access",
+        ],
     },
     {
         "card_id": "blue_cash_preferred",
         "card_name": "Blue Cash Preferred",
+        "issuer": "American Express",
         "annual_fee": 95.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
             "category_bonuses": {"groceries": 6.0, "streaming": 6.0, "gas": 3.0},
         },
+        "key_benefits": [
+            "6% on groceries",
+            "6% on streaming",
+            "3% on gas",
+            "$0 intro annual fee first year",
+        ],
     },
     {
         "card_id": "capital_one_savor",
         "card_name": "Capital One Savor",
+        "issuer": "Capital One",
         "annual_fee": 0.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
             "category_bonuses": {"dining": 3.0, "entertainment": 3.0, "groceries": 3.0},
         },
+        "key_benefits": [
+            "3% on dining",
+            "3% on entertainment",
+            "3% on groceries",
+            "No annual fee",
+        ],
     },
     {
         "card_id": "chase_freedom_unlimited",
         "card_name": "Chase Freedom Unlimited",
+        "issuer": "Chase",
         "annual_fee": 0.0,
         "reward_rates": {
             "universal_base_rate": 1.5,
             "category_bonuses": {"dining": 3.0, "travel": 2.0},
         },
+        "key_benefits": [
+            "1.5% on everything",
+            "3% on dining",
+            "No annual fee",
+            "0% intro APR 15 months",
+        ],
     },
     {
         "card_id": "wells_fargo_autograph",
         "card_name": "Wells Fargo Autograph",
+        "issuer": "Wells Fargo",
         "annual_fee": 0.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
@@ -154,15 +215,28 @@ CURATED_CARD_CATALOG: List[Dict[str, Any]] = [
                 "streaming": 3.0,
             },
         },
+        "key_benefits": [
+            "3x on dining",
+            "3x on travel",
+            "3x on gas and streaming",
+            "No annual fee",
+        ],
     },
     {
         "card_id": "discover_it_cash_back",
         "card_name": "Discover it Cash Back",
+        "issuer": "Discover",
         "annual_fee": 0.0,
         "reward_rates": {
             "universal_base_rate": 1.0,
             "category_bonuses": {"gas": 5.0, "online_shopping": 5.0},
         },
+        "key_benefits": [
+            "5% rotating categories",
+            "1% on everything else",
+            "Cashback Match first year",
+            "No annual fee",
+        ],
     },
 ]
 MCC_MAPPER = MerchantCategoryMapper()
@@ -172,7 +246,12 @@ def _parse_cors_origins() -> List[str]:
     """Parse CORS origins from env (JSON list or comma-separated string)."""
     raw = os.getenv("CORS_ORIGINS")
     if not raw:
-        return ["http://localhost:5173", "http://localhost:3000"]
+        return [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+            "http://localhost:3000",
+        ]
 
     try:
         parsed = json.loads(raw)
@@ -306,11 +385,15 @@ class PredictionRequest(StrictModel):
 
 class RecommendedCard(StrictModel):
     card_name: str = Field(..., min_length=1)
+    issuer: str = Field(default="")
     score: float
     rank: int = Field(..., ge=1)
     explanation: str = Field(..., min_length=1)
     deterministic_score: float
     personalization_score: float
+    annual_fee: float = Field(default=0.0)
+    reward_rate: float = Field(default=0.0)
+    key_benefits: List[str] = Field(default_factory=list)
 
 
 class PredictionResponse(StrictModel):
@@ -323,6 +406,36 @@ class HealthResponse(StrictModel):
     status: str
     model_version: str
     uptime_seconds: float
+
+
+class MonitoringDriftCheck(StrictModel):
+    detected: bool = False
+    timestamp: str = ""
+    feature_drift: Dict[str, float] = Field(default_factory=dict)
+
+
+class MonitoringServingMetrics(StrictModel):
+    request_count: int = 0
+    avg_latency_ms: float = 0.0
+    error_rate: float = 0.0
+    p95_latency_ms: float = 0.0
+
+
+class MonitoringRetrainEvent(StrictModel):
+    timestamp: str
+    trigger_reason: str
+    model_version: str
+    status: str
+
+
+class MonitoringResponse(StrictModel):
+    model_version: str
+    last_deployment_time: str
+    drift_check: MonitoringDriftCheck = Field(default_factory=MonitoringDriftCheck)
+    serving_metrics: MonitoringServingMetrics = Field(
+        default_factory=MonitoringServingMetrics
+    )
+    retrain_history: List[MonitoringRetrainEvent] = Field(default_factory=list)
 
 
 app = FastAPI(title="RewardSense Inference API", version="0.2.0")
@@ -826,9 +939,11 @@ def _score_profile(
         card["card_id"]: {
             "card_id": card["card_id"],
             "card_name": card.get("card_name", ""),
+            "issuer": card.get("issuer", ""),
             "annual_fee": float(card.get("annual_fee", 0.0)),
             "deterministic_score": 0.0,
             "reward_rates": card.get("reward_rates", {}),
+            "key_benefits": card.get("key_benefits", []),
         }
         for card in CARD_CATALOG
     }
@@ -884,6 +999,7 @@ def _score_profile(
     recommendations = [
         RecommendedCard(
             card_name=card.get("card_name", ""),
+            issuer=card.get("issuer", ""),
             score=round(float(card.get("blended_score", 0.0)), 4),
             rank=int(card.get("rank", index + 1)),
             explanation=_build_template_explanation(card, normalized_categories),
@@ -891,6 +1007,14 @@ def _score_profile(
             personalization_score=round(
                 float(card.get("personalization_score", 0.0)), 4
             ),
+            annual_fee=round(float(card.get("annual_fee", 0.0)), 2),
+            reward_rate=round(
+                float(
+                    card.get("reward_rates", {}).get("universal_base_rate", 0.0)
+                ),
+                2,
+            ),
+            key_benefits=card.get("key_benefits", []),
         )
         for index, card in enumerate(ranked_cards[: max(1, MAX_RECOMMENDATIONS)])
     ]
@@ -937,6 +1061,102 @@ def health() -> HealthResponse:
         model_version=get_model_version() or "unloaded",
         uptime_seconds=round(uptime, 3),
     )
+
+
+# ---------------------------------------------------------------------------
+# Monitoring endpoint helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_latest_json(directory: Path, prefix: str) -> Optional[Dict[str, Any]]:
+    """Load the most recent JSON file matching ``prefix*.json`` from *directory*."""
+    if not directory.exists():
+        return None
+    files = sorted(directory.glob(f"{prefix}*.json"), reverse=True)
+    if not files:
+        return None
+    try:
+        return json.loads(files[0].read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to read %s: %s", files[0], exc)
+        return None
+
+
+def _find_latest_json_gcs(prefix: str) -> Optional[Dict[str, Any]]:
+    """Load the most recent JSON blob from GCS under *prefix*."""
+    try:
+        from google.cloud import storage as gcs_storage
+    except ImportError:
+        return None
+
+    try:
+        client = gcs_storage.Client()
+        bucket = client.bucket(GCS_MONITORING_BUCKET)
+        blobs = list(bucket.list_blobs(prefix=prefix))
+        json_blobs = [b for b in blobs if b.name.endswith(".json")]
+        if not json_blobs:
+            return None
+        latest = sorted(json_blobs, key=lambda b: b.name, reverse=True)[0]
+        content = latest.download_as_text(encoding="utf-8")
+        return json.loads(content)
+    except Exception as exc:
+        logger.warning("GCS monitoring read failed (prefix=%s): %s", prefix, exc)
+        return None
+
+
+def _load_monitoring_data() -> MonitoringResponse:
+    """Build monitoring response from latest drift report and performance snapshot."""
+    from datetime import datetime, timedelta, timezone
+
+    model_version = get_model_version() or "unloaded"
+    uptime = max(time.monotonic() - app.state.started_at, 0.0)
+    deploy_time = datetime.now(timezone.utc) - timedelta(seconds=uptime)
+
+    # --- Drift data ---
+    drift_data = (
+        _find_latest_json(LOCAL_DRIFT_DIR, "data_drift_")
+        or _find_latest_json_gcs(f"{DRIFT_REPORT_PREFIX}/")
+    )
+
+    drift_check = MonitoringDriftCheck()
+    if drift_data:
+        summary = drift_data.get("summary", drift_data)
+        drift_check.detected = bool(summary.get("drift_detected", False))
+        drift_check.timestamp = str(summary.get("timestamp", ""))
+
+        per_feature = drift_data.get("per_feature_drift", {})
+        drift_check.feature_drift = {
+            feature: float(data.get("drift_score", 0.0))
+            if isinstance(data, dict)
+            else float(data)
+            for feature, data in per_feature.items()
+        }
+
+    # --- Performance data ---
+    perf_data = (
+        _find_latest_json(LOCAL_PERFORMANCE_DIR, "performance_")
+        or _find_latest_json_gcs(f"{PERFORMANCE_SNAPSHOT_PREFIX}/")
+    )
+
+    serving_metrics = MonitoringServingMetrics()
+    if perf_data:
+        serving_metrics.request_count = int(perf_data.get("total_requests", 0))
+        latency = perf_data.get("latency", {})
+        serving_metrics.avg_latency_ms = float(latency.get("mean_ms", 0.0))
+        serving_metrics.p95_latency_ms = float(latency.get("p95_ms", 0.0))
+
+    return MonitoringResponse(
+        model_version=model_version,
+        last_deployment_time=deploy_time.isoformat(),
+        drift_check=drift_check,
+        serving_metrics=serving_metrics,
+        retrain_history=[],
+    )
+
+
+@app.get("/monitoring", response_model=MonitoringResponse)
+def monitoring() -> MonitoringResponse:
+    return _load_monitoring_data()
 
 
 @app.post("/predict", response_model=PredictionResponse)

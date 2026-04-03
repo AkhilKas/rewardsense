@@ -248,7 +248,7 @@ export default function RecommendPage() {
             Analyzing your profile...
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Running ML personalization model
+            This usually takes a few seconds
           </p>
         </Card>
       </div>

@@ -1,61 +1,45 @@
 import { Link } from "react-router-dom";
 import Button from "../components/Button";
 import Card from "../components/Card";
-import Badge from "../components/Badge";
 
 const features = [
   {
     title: "Personalized Scoring",
     description:
-      "ML model learns your spending patterns to rank cards specifically for you.",
+      "Analyzes your spending patterns to rank cards specifically for you.",
     icon: "\u{1F3AF}",
   },
   {
     title: "Real-Time Recommendations",
     description:
-      "Get card rankings in seconds, powered by a deployed inference API on Cloud Run.",
+      "Get card rankings in seconds based on your unique spending profile.",
     icon: "\u26A1",
   },
   {
-    title: "AI Explanations",
+    title: "Clear Explanations",
     description:
-      "Understand why each card is recommended with LLM-generated plain-language explanations.",
+      "Understand why each card is recommended with clear, plain-language explanations.",
     icon: "\u{1F4A1}",
   },
   {
-    title: "Continuous Monitoring",
+    title: "Always Up to Date",
     description:
-      "Automated drift detection and retraining keeps recommendations accurate over time.",
+      "Recommendations stay accurate over time as your spending habits evolve.",
     icon: "\u{1F4CA}",
   },
-];
-
-const techStack = [
-  "Airflow",
-  "MLflow",
-  "Docker",
-  "Cloud Run",
-  "Evidently AI",
-  "SHAP",
-  "FastAPI",
-  "React",
 ];
 
 export default function HomePage() {
   return (
     <div className="space-y-16">
       <section className="text-center pt-12 pb-4">
-        <Badge variant="info" className="mb-4">
-          Powered by MLOps
-        </Badge>
         <h1 className="text-4xl sm:text-5xl font-bold text-secondary tracking-tight">
           Find Your Perfect{" "}
           <span className="text-primary">Credit Card</span>
         </h1>
         <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-          RewardSense uses machine learning to analyze your spending habits and
-          recommend the credit cards that maximize your rewards — personalized
-          just for you.
+          RewardSense analyzes your spending habits and recommends the credit
+          cards that maximize your rewards — personalized just for you.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link to="/recommend">
@@ -63,7 +47,7 @@ export default function HomePage() {
           </Link>
           <Link to="/dashboard">
             <Button variant="secondary" size="lg">
-              View Dashboard
+              System Status
             </Button>
           </Link>
         </div>
@@ -92,19 +76,16 @@ export default function HomePage() {
           className="bg-linear-to-br from-primary/5 to-accent/5 border-primary/20"
         >
           <h2 className="text-2xl font-bold text-secondary mb-3">
-            End-to-End MLOps Pipeline
+            Ready to Find Your Best Card?
           </h2>
           <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            From data ingestion and preprocessing to model training, deployment,
-            monitoring, and automatic retraining — RewardSense demonstrates a
-            production-grade ML system.
+            Enter your spending profile and get personalized recommendations in
+            seconds. No sign-up required.
           </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {techStack.map((tech) => (
-              <Badge key={tech} variant="info">
-                {tech}
-              </Badge>
-            ))}
+          <div className="mt-6">
+            <Link to="/recommend">
+              <Button size="lg">Get Started</Button>
+            </Link>
           </div>
         </Card>
       </section>

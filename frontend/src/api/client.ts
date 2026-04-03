@@ -1,23 +1,20 @@
-// API SWAP GUIDE (remove this block when real API is live)
+// API CLIENT — auto-switches between mock and real API based on VITE_API_URL.
+// To switch back to mocks: set USE_MOCK to true below.
 //
-// 1. Set VITE_API_URL in your .env file:
-//    VITE_API_URL=https://rewardsense-serving-xxxxx.us-central1.run.app
+// Setup:
+//   1. Create frontend/.env with:  VITE_API_URL=https://rewardsense-serving-xxxxx.us-central1.run.app
+//   2. For local dev:              VITE_API_URL=http://localhost:8000
 //
-// 2. The real API endpoints are:
-//    - POST ${VITE_API_URL}/predict  (body: PredictionRequest → response: PredictionResponse)
-//    - GET  ${VITE_API_URL}/health   (response: HealthResponse)
-//    - GET  ${VITE_API_URL}/monitoring (response: MonitoringData)
+// Endpoints (all implemented on the serving API):
+//   POST ${VITE_API_URL}/predict     → PredictionResponse
+//   GET  ${VITE_API_URL}/health      → HealthResponse
+//   GET  ${VITE_API_URL}/monitoring   → MonitoringData
 //
-// 3. Once VITE_API_URL is set, this file auto-switches from mock to real fetch calls.
-//    No other changes needed — the USE_MOCK flag handles it.
-//
-// 4. To fully remove mocks: delete mock.ts, remove the mock imports below,
-//    and remove the USE_MOCK branches.
-//
-// 5. Quick smoke test:
-//    curl -X POST ${VITE_API_URL}/predict \
-//      -H "Content-Type: application/json" \
-//      -d '{"user_id":"test","spending_categories":{"dining":500,"travel":300},"monthly_spend":2000,"preferred_rewards":["travel"]}'
+// Smoke test:
+//   curl -X POST ${VITE_API_URL}/predict \
+//     -H "Content-Type: application/json" \
+//     -d '{"user_id":"test","spending_categories":{"dining":500,"travel":300},"monthly_spend":2000,"preferred_rewards":["travel"]}'
+//   curl ${VITE_API_URL}/monitoring
 
 import type {
   PredictionRequest,
@@ -28,7 +25,7 @@ import type {
 import { mockPredict, mockHealth, mockMonitoringData } from "./mock";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
-const USE_MOCK = !API_BASE_URL;
+const USE_MOCK = !API_BASE_URL; // Set to `true` to force mock data for development
 
 export async function predict(
   request: PredictionRequest,
@@ -41,7 +38,20 @@ export async function predict(
     body: JSON.stringify(request),
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  const data: PredictionResponse = await res.json();
+
+  const maxScore = Math.max(...data.recommended_cards.map((c) => c.score), 1);
+
+  data.recommended_cards = data.recommended_cards.map((card) => ({
+    ...card,
+    score: Math.round((card.score / maxScore) * 100),
+    score_breakdown: {
+      deterministic: card.deterministic_score ?? 0,
+      personalization: card.personalization_score ?? 0,
+    },
+  }));
+
+  return data;
 }
 
 export async function health(): Promise<HealthResponse> {

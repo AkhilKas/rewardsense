@@ -37,6 +37,8 @@ export interface RecommendedCard {
   annual_fee: number;
   reward_rate: number;
   key_benefits: string[];
+  deterministic_score?: number;
+  personalization_score?: number;
   score_breakdown: ScoreBreakdown;
 }
 

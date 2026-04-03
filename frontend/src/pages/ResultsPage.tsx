@@ -189,8 +189,8 @@ function ScoreBreakdownBar({
   return (
     <div className="mb-3">
       <div className={`flex items-center justify-between mb-1 ${textClass}`}>
-        <span>Det: {card.score_breakdown.deterministic.toFixed(1)}</span>
-        <span>ML: {card.score_breakdown.personalization.toFixed(1)}</span>
+        <span>Base: {card.score_breakdown.deterministic.toFixed(1)}</span>
+        <span>Boosted: {card.score_breakdown.personalization.toFixed(1)}</span>
       </div>
       <div className="h-2 rounded-full bg-border overflow-hidden flex">
         <div className="bg-primary/70 h-full" style={{ width: `${detPct}%` }} />
@@ -200,11 +200,11 @@ function ScoreBreakdownBar({
         <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1">
             <span className="inline-block w-2 h-2 rounded-full bg-primary/70" />
-            Deterministic
+            Base Match
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-2 h-2 rounded-full bg-accent/70" />
-            Personalization
+            Personalized Boost
           </span>
         </div>
       )}
@@ -246,9 +246,8 @@ export default function ResultsPage() {
         <div>
           <h1 className="text-3xl font-bold text-secondary">Your Results</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Model {results.model_version} &middot;{" "}
-            {results.inference_latency_ms}ms inference &middot;{" "}
-            {results.recommended_cards.length} cards ranked
+            {results.recommended_cards.length} cards ranked &middot; analyzed
+            in {results.inference_latency_ms}ms
           </p>
         </div>
         <div className="flex items-center gap-2">

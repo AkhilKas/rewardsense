@@ -5,7 +5,7 @@ import ThemeToggle from "./ThemeToggle";
 const navLinks = [
   { to: "/", label: "Home" },
   { to: "/recommend", label: "Recommend" },
-  { to: "/dashboard", label: "Dashboard" },
+  { to: "/dashboard", label: "System Status" },
 ];
 
 export default function Layout() {
@@ -111,7 +111,7 @@ export default function Layout() {
 
       <footer className="border-t border-border bg-card transition-colors duration-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-          RewardSense &copy; 2026. Built with MLOps.
+          &copy; 2026 RewardSense. All rights reserved.
         </div>
       </footer>
     </div>
