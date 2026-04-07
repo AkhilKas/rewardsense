@@ -1,0 +1,38 @@
+# Persona modifier definitions for RewardSense recommendation layer.
+#
+# annual_fee_multiplier:
+#   Scales the monthly amortised annual-fee deduction applied on top of the
+#   base scoring output.  Values > 1.0 increase fee sensitivity (penalise
+#   high-fee cards more); values < 1.0 reduce it.
+#
+# category_boosts:
+#   Multiplicative boost applied to reward_amount when the transaction
+#   category matches.  1.0 = no change.  Keys must match the category
+#   strings used by the scoring engine (dining, travel, groceries, gas,
+#   utilities, entertainment, online_shopping, other).
+
+personas:
+  student:
+    description: "Minimize fees, favor no-fee simple cashback"
+    annual_fee_multiplier: 2.0
+    category_boosts: {}
+
+  traveler:
+    description: "Maximize travel multipliers and transferable points"
+    annual_fee_multiplier: 0.5
+    category_boosts:
+      travel: 1.5
+      dining: 1.2
+
+  family:
+    description: "Groceries, gas, and utilities focus"
+    annual_fee_multiplier: 0.8
+    category_boosts:
+      groceries: 1.5
+      gas: 1.3
+      utilities: 1.2
+
+  cashback-focused:
+    description: "Flat-rate cashback simplicity"
+    annual_fee_multiplier: 1.0
+    category_boosts: {}

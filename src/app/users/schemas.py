@@ -45,3 +45,37 @@ class CardCatalogItem(BaseModel):
     annual_fee: float
     reward_highlights: List[str]
     image_url: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Recommendation request / response shapes (Story 1.3)
+# ---------------------------------------------------------------------------
+
+
+class ScoredCard(BaseModel):
+    card_id: Optional[str] = None
+    card_name: str
+    reward_amount: float
+    annual_fee: float = 0.0
+    rank: int
+    persona_adjustments: Optional[dict] = None  # type: ignore[type-arg]
+
+
+class PersonaRecommendResponse(BaseModel):
+    ranked: List[ScoredCard]
+    best_card_id: Optional[str]
+    is_personalized: bool
+    is_generic: bool
+    active_personas: List[str]
+    persona_context: str
+
+
+class PortfolioRecommendRequest(BaseModel):
+    spending_categories: dict  # type: ignore[type-arg]
+    monthly_spend: float = 0.0
+
+
+class TransactionRecommendRequest(BaseModel):
+    merchant: str
+    amount: float
+    category: Optional[str] = None
