@@ -21,6 +21,9 @@ import type {
   PredictionResponse,
   HealthResponse,
   MonitoringData,
+  UserProfile,
+  ProfilePatch,
+  CardCatalogItem,
 } from "../types";
 import { mockPredict, mockHealth, mockMonitoringData } from "./mock";
 
@@ -79,6 +82,47 @@ export async function health(): Promise<HealthResponse> {
   handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
+}
+
+export async function getMe(): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE_URL}/me`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<UserProfile>;
+}
+
+export async function updateProfile(patch: ProfilePatch): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE_URL}/me/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(patch),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<UserProfile>;
+}
+
+export async function updateSavedCards(
+  cardIds: string[],
+): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE_URL}/me/cards`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ card_ids: cardIds }),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<UserProfile>;
+}
+
+export async function getCardCatalog(): Promise<CardCatalogItem[]> {
+  const res = await fetch(`${API_BASE_URL}/cards/catalog`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<CardCatalogItem[]>;
 }
 
 export async function getMonitoringData(): Promise<MonitoringData> {

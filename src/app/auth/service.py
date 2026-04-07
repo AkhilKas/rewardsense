@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from src.app.db.models import AuthCredential, User
+from src.app.db.models import AuthCredential, User, UserSettings
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -37,6 +37,10 @@ def signup(db: Session, email: str, password: str, display_name: str) -> User:
         password_hash=_hash_password(password),
     )
     db.add(credential)
+
+    settings = UserSettings(user_id=user.id)
+    db.add(settings)
+
     db.commit()
     db.refresh(user)
     return user

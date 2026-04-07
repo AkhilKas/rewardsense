@@ -8,6 +8,7 @@ import SignupPage from "./pages/SignupPage";
 import RecommendPage from "./pages/RecommendPage";
 import ResultsPage from "./pages/ResultsPage";
 import DashboardPage from "./pages/DashboardPage";
+import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
               <Route path="recommend" element={<RecommendPage />} />
               <Route path="results" element={<ResultsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="profile" element={<ProfilePage />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />

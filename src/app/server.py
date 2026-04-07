@@ -380,6 +380,7 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
 
     from src.app.auth.router import router as auth_router
     from src.app.db.init_db import init_db
+    from src.app.users.router import router as users_router
 
     @asynccontextmanager
     async def lifespan(app):  # type: ignore[type-arg]
@@ -388,6 +389,7 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
 
     app = FastAPI(title="RewardSense API", version="0.1.0", lifespan=lifespan)
     app.include_router(auth_router)
+    app.include_router(users_router)
     runtime_service = service or build_default_service()
 
     @app.get("/health")

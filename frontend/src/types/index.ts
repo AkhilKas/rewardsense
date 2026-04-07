@@ -85,3 +85,35 @@ export interface MonitoringData {
   serving_metrics: ServingMetrics;
   retrain_history: RetrainEvent[];
 }
+
+// ---------------------------------------------------------------------------
+// User profile & catalog types (Story 1.2)
+// ---------------------------------------------------------------------------
+
+export interface UserProfile {
+  user_id: number;
+  email: string;
+  display_name: string;
+  personas: string[];
+  reward_preference: string;
+  transaction_logging_enabled: boolean;
+  dark_mode: boolean;
+  saved_card_ids: string[];
+}
+
+export interface ProfilePatch {
+  display_name?: string;
+  personas?: string[];
+  reward_preference?: string;
+  transaction_logging_enabled?: boolean;
+  dark_mode?: boolean;
+}
+
+export interface CardCatalogItem {
+  card_id: string;
+  card_name: string;
+  issuer: string;
+  annual_fee: number;
+  reward_highlights: string[];
+  image_url: string | null;
+}
