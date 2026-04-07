@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from src.app.db.database import Base
@@ -27,7 +27,10 @@ class User(Base):
     )
 
     credential = relationship(
-        "AuthCredential", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "AuthCredential",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
 
