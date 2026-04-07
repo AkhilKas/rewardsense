@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import { useAuth } from "../context/AuthContext";
 
 const features = [
   {
@@ -30,6 +31,9 @@ const features = [
 ];
 
 export default function HomePage() {
+  const { isAuthenticated } = useAuth();
+  const ctaPath = isAuthenticated ? "/recommend" : "/signup";
+
   return (
     <div className="space-y-16">
       <section className="text-center pt-12 pb-4">
@@ -42,7 +46,7 @@ export default function HomePage() {
           cards that maximize your rewards — personalized just for you.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
-          <Link to="/recommend">
+          <Link to={ctaPath}>
             <Button size="lg">Get Recommendations</Button>
           </Link>
           <Link to="/dashboard">
@@ -80,10 +84,10 @@ export default function HomePage() {
           </h2>
           <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
             Enter your spending profile and get personalized recommendations in
-            seconds. No sign-up required.
+            seconds.
           </p>
           <div className="mt-6">
-            <Link to="/recommend">
+            <Link to={ctaPath}>
               <Button size="lg">Get Started</Button>
             </Link>
           </div>

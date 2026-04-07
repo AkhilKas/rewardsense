@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 import logging
 import os
 from typing import Any, Dict, Generator, List, Optional
@@ -378,7 +378,16 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
             "FastAPI is not installed. Install `fastapi` and `uvicorn` to serve HTTP endpoints."
         )
 
-    app = FastAPI(title="RewardSense API", version="0.1.0")
+    from src.app.auth.router import router as auth_router
+    from src.app.db.init_db import init_db
+
+    @asynccontextmanager
+    async def lifespan(app):  # type: ignore[type-arg]
+        init_db()
+        yield
+
+    app = FastAPI(title="RewardSense API", version="0.1.0", lifespan=lifespan)
+    app.include_router(auth_router)
     runtime_service = service or build_default_service()
 
     @app.get("/health")

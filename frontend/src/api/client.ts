@@ -27,6 +27,21 @@ import { mockPredict, mockHealth, mockMonitoringData } from "./mock";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 const USE_MOCK = !API_BASE_URL; // Set to `true` to force mock data for development
 
+const TOKEN_KEY = "rs_token";
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function handleUnauthorized(status: number): void {
+  if (status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem("rs_user");
+    window.location.href = "/login";
+  }
+}
+
 export async function predict(
   request: PredictionRequest,
 ): Promise<PredictionResponse> {
@@ -34,9 +49,10 @@ export async function predict(
 
   const res = await fetch(`${API_BASE_URL}/predict`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(request),
   });
+  handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   const data: PredictionResponse = await res.json();
 
@@ -57,7 +73,10 @@ export async function predict(
 export async function health(): Promise<HealthResponse> {
   if (USE_MOCK) return mockHealth();
 
-  const res = await fetch(`${API_BASE_URL}/health`);
+  const res = await fetch(`${API_BASE_URL}/health`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
@@ -65,7 +84,10 @@ export async function health(): Promise<HealthResponse> {
 export async function getMonitoringData(): Promise<MonitoringData> {
   if (USE_MOCK) return mockMonitoringData();
 
-  const res = await fetch(`${API_BASE_URL}/monitoring`);
+  const res = await fetch(`${API_BASE_URL}/monitoring`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }

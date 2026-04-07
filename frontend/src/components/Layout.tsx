@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -10,6 +11,13 @@ const navLinks = [
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/");
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-surface font-sans transition-colors duration-200">
@@ -40,6 +48,36 @@ export default function Layout() {
                 </NavLink>
               ))}
             </nav>
+            <div className="ml-2 flex items-center gap-2 border-l border-border pl-3">
+              {isAuthenticated ? (
+                <>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    {user?.display_name}
+                  </span>
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors duration-200"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors duration-200"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Mobile controls */}
@@ -99,6 +137,38 @@ export default function Layout() {
                 {link.label}
               </NavLink>
             ))}
+            <div className="pt-2 border-t border-border">
+              {isAuthenticated ? (
+                <>
+                  <p className="px-3 py-1 text-xs text-slate-400">
+                    {user?.display_name}
+                  </p>
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); void handleLogout(); }}
+                    className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors duration-200"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-3 py-2 rounded-md text-sm font-medium text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-200"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
+            </div>
           </nav>
         )}
       </header>
