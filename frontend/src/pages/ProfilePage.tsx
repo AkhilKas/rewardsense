@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getMe, updateProfile, updateSavedCards, getCardCatalog } from "../api/client";
-import type { UserProfile, CardCatalogItem } from "../types";
+import type { CardCatalogItem } from "../types";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import { applyThemePreference } from "../hooks/useTheme";
 
 const PERSONA_OPTIONS = [
   {
@@ -36,7 +37,6 @@ const REWARD_OPTIONS = [
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [catalog, setCatalog] = useState<CardCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +47,7 @@ export default function ProfilePage() {
   const [rewardPref, setRewardPref] = useState("cashback");
   const [loggingEnabled, setLoggingEnabled] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [savedDarkMode, setSavedDarkMode] = useState(false);
   const [savedCardIds, setSavedCardIds] = useState<string[]>([]);
 
   // Per-section save states
@@ -54,17 +55,20 @@ export default function ProfilePage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingCards, setSavingCards] = useState(false);
   const [saveMsg, setSaveMsg] = useState<Record<string, string>>({});
+  const darkModeRef = useRef(darkMode);
+  const savedDarkModeRef = useRef(savedDarkMode);
 
   useEffect(() => {
     Promise.all([getMe(), getCardCatalog()])
       .then(([p, c]) => {
-        setProfile(p);
         setCatalog(c);
         setDisplayName(p.display_name);
         setPersonas(p.personas);
         setRewardPref(p.reward_preference);
         setLoggingEnabled(p.transaction_logging_enabled);
         setDarkMode(p.dark_mode);
+        setSavedDarkMode(p.dark_mode);
+        applyThemePreference(p.dark_mode ? "dark" : "light");
         setSavedCardIds(p.saved_card_ids);
       })
       .catch((e: unknown) =>
@@ -84,8 +88,7 @@ export default function ProfilePage() {
   async function saveDisplayName() {
     setSavingProfile(true);
     try {
-      const updated = await updateProfile({ display_name: displayName });
-      setProfile(updated);
+      await updateProfile({ display_name: displayName });
       flash("profile", "Saved");
     } catch (e: unknown) {
       flash("profile", e instanceof Error ? e.message : "Save failed");
@@ -100,8 +103,7 @@ export default function ProfilePage() {
       : [...personas, key];
     setPersonas(next);
     try {
-      const updated = await updateProfile({ personas: next });
-      setProfile(updated);
+      await updateProfile({ personas: next });
     } catch {
       // revert on failure
       setPersonas(personas);
@@ -110,13 +112,21 @@ export default function ProfilePage() {
 
   async function saveSettings() {
     setSavingSettings(true);
+    const nextDarkMode = darkMode;
+    const nextLoggingEnabled = loggingEnabled;
+    const nextRewardPref = rewardPref;
     try {
       const updated = await updateProfile({
-        reward_preference: rewardPref,
-        transaction_logging_enabled: loggingEnabled,
-        dark_mode: darkMode,
+        reward_preference: nextRewardPref,
+        transaction_logging_enabled: nextLoggingEnabled,
+        dark_mode: nextDarkMode,
       });
-      setProfile(updated);
+      setRewardPref(updated.reward_preference);
+      setLoggingEnabled(updated.transaction_logging_enabled);
+      // Keep UI on the just-saved choice even if any stale response races in.
+      setDarkMode(nextDarkMode);
+      setSavedDarkMode(nextDarkMode);
+      applyThemePreference(nextDarkMode ? "dark" : "light");
       flash("settings", "Saved");
     } catch (e: unknown) {
       flash("settings", e instanceof Error ? e.message : "Save failed");
@@ -125,11 +135,27 @@ export default function ProfilePage() {
     }
   }
 
+  useEffect(() => {
+    darkModeRef.current = darkMode;
+  }, [darkMode]);
+
+  useEffect(() => {
+    savedDarkModeRef.current = savedDarkMode;
+  }, [savedDarkMode]);
+
+  // Dark mode should preview instantly on this page, but revert if user leaves without saving.
+  useEffect(() => {
+    return () => {
+      if (darkModeRef.current !== savedDarkModeRef.current) {
+        applyThemePreference(savedDarkModeRef.current ? "dark" : "light");
+      }
+    };
+  }, []);
+
   async function saveWallet() {
     setSavingCards(true);
     try {
-      const updated = await updateSavedCards(savedCardIds);
-      setProfile(updated);
+      await updateSavedCards(savedCardIds);
       flash("cards", "Wallet saved");
     } catch (e: unknown) {
       flash("cards", e instanceof Error ? e.message : "Save failed");
@@ -294,7 +320,13 @@ export default function ProfilePage() {
             <button
               role="switch"
               aria-checked={darkMode}
-              onClick={() => setDarkMode((v) => !v)}
+              onClick={() => {
+                setDarkMode((v) => {
+                  const next = !v;
+                  applyThemePreference(next ? "dark" : "light");
+                  return next;
+                });
+              }}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/50 ${
                 darkMode ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"
               }`}

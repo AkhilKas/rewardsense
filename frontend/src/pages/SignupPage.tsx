@@ -1,11 +1,12 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/Button";
 import Card from "../components/Card";
 
 export default function SignupPage() {
-  const { signup, isAuthenticated } = useAuth();
+  const { signup, isAuthenticated, isLoadingAuth } = useAuth();
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState("");
@@ -14,7 +15,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (isAuthenticated) {
+  if (!isLoadingAuth && isAuthenticated) {
     return <Navigate to="/recommend" replace />;
   }
 
@@ -33,8 +34,17 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto pt-12">
-      <Card padding="lg">
+    <div className="min-h-screen bg-surface px-4 py-10 flex items-start justify-center transition-colors duration-200">
+      <Card padding="lg" className="w-full max-w-md">
+        <div className="flex justify-end mb-2">
+          <Link
+            to="/"
+            aria-label="Close and return home"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 transition-colors"
+          >
+            ×
+          </Link>
+        </div>
         <h1 className="text-2xl font-bold text-secondary mb-6">
           Create account
         </h1>
@@ -105,8 +115,8 @@ export default function SignupPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account…" : "Create account"}
+          <Button type="submit" className="w-full" loading={loading}>
+            Create account
           </Button>
         </form>
 

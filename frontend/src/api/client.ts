@@ -1,20 +1,5 @@
-// API CLIENT — auto-switches between mock and real API based on VITE_API_URL.
+// API CLIENT — Phase 4 uses src/app/* endpoints.
 // To switch back to mocks: set USE_MOCK to true below.
-//
-// Setup:
-//   1. Create frontend/.env with:  VITE_API_URL=https://rewardsense-serving-xxxxx.us-central1.run.app
-//   2. For local dev:              VITE_API_URL=http://localhost:8000
-//
-// Endpoints (all implemented on the serving API):
-//   POST ${VITE_API_URL}/predict     → PredictionResponse
-//   GET  ${VITE_API_URL}/health      → HealthResponse
-//   GET  ${VITE_API_URL}/monitoring   → MonitoringData
-//
-// Smoke test:
-//   curl -X POST ${VITE_API_URL}/predict \
-//     -H "Content-Type: application/json" \
-//     -d '{"user_id":"test","spending_categories":{"dining":500,"travel":300},"monthly_spend":2000,"preferred_rewards":["travel"]}'
-//   curl ${VITE_API_URL}/monitoring
 
 import type {
   PredictionRequest,
@@ -24,13 +9,50 @@ import type {
   UserProfile,
   ProfilePatch,
   CardCatalogItem,
+  PortfolioRecommendRequest,
+  TransactionRecommendRequest,
+  PersonaRecommendResponse,
+  TransactionsResponse,
+  TransactionsExportResponse,
+  SummaryResponse,
+  FeedbackRequest,
+  FeedbackResponse,
+  BusinessMetricsResponse,
+  LoginRequest,
+  SignupRequest,
+  TokenResponse,
 } from "../types";
-import { mockPredict, mockHealth, mockMonitoringData } from "./mock";
+import {
+  mockPredict,
+  mockHealth,
+  mockMonitoringData,
+  mockCardsCatalog,
+  mockRecommendPortfolio,
+  mockRecommendTransaction,
+  mockTransactions,
+  mockTransactionsExport,
+  mockSummary,
+  mockFeedback,
+  mockBusinessMetrics,
+} from "./mock";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 const USE_MOCK = !API_BASE_URL; // Set to `true` to force mock data for development
 
 const TOKEN_KEY = "rs_token";
+
+async function buildApiError(res: Response): Promise<Error> {
+  let message = `API error: ${res.status}`;
+  try {
+    const data = (await res.json()) as { detail?: string };
+    if (data?.detail) {
+      message = data.detail;
+    }
+  } catch {
+    // Ignore JSON parse failures and keep generic fallback message.
+  }
+  return new Error(message);
+}
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem(TOKEN_KEY);
@@ -118,6 +140,8 @@ export async function updateSavedCards(
 }
 
 export async function getCardCatalog(): Promise<CardCatalogItem[]> {
+  if (USE_MOCK) return mockCardsCatalog();
+
   const res = await fetch(`${API_BASE_URL}/cards/catalog`, {
     headers: authHeaders(),
   });
@@ -134,4 +158,104 @@ export async function getMonitoringData(): Promise<MonitoringData> {
   handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
+}
+
+export async function signup(payload: SignupRequest): Promise<TokenResponse> {
+  if (USE_MOCK) {
+    return {
+      access_token: "mock-token",
+      token_type: "bearer",
+      user_id: 1,
+      display_name: payload.display_name,
+    };
+  }
+  const res = await fetch(`${API_BASE_URL}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<TokenResponse>;
+}
+
+export async function login(payload: LoginRequest): Promise<TokenResponse> {
+  if (USE_MOCK) {
+    return {
+      access_token: "mock-token",
+      token_type: "bearer",
+      user_id: 1,
+      display_name: "Demo User",
+    };
+  }
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<TokenResponse>;
+}
+
+export async function logout(): Promise<void> {
+  if (USE_MOCK) return;
+  await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+}
+
+export async function recommendPortfolio(
+  payload: PortfolioRecommendRequest,
+): Promise<PersonaRecommendResponse> {
+  if (USE_MOCK) return mockRecommendPortfolio(payload);
+  const res = await fetch(`${API_BASE_URL}/recommendations/portfolio`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<PersonaRecommendResponse>;
+}
+
+export async function recommendTransaction(
+  payload: TransactionRecommendRequest,
+): Promise<PersonaRecommendResponse> {
+  if (USE_MOCK) return mockRecommendTransaction(payload);
+  const res = await fetch(`${API_BASE_URL}/recommendations/transaction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<PersonaRecommendResponse>;
+}
+
+// Missing backend endpoints in Phase 4 — intentionally mock-backed.
+export async function getTransactions(
+  page = 1,
+  pageSize = 10,
+): Promise<TransactionsResponse> {
+  return mockTransactions(page, pageSize);
+}
+
+export async function exportTransactions(
+  format: "csv" | "xlsx",
+): Promise<TransactionsExportResponse> {
+  return mockTransactionsExport(format);
+}
+
+export async function getSummary(): Promise<SummaryResponse> {
+  return mockSummary();
+}
+
+export async function submitFeedback(
+  payload: FeedbackRequest,
+): Promise<FeedbackResponse> {
+  return mockFeedback(payload);
+}
+
+export async function getBusinessMetrics(): Promise<BusinessMetricsResponse> {
+  return mockBusinessMetrics();
 }
