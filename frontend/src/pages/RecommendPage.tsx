@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import SliderInput from "../components/SliderInput";
 import Select from "../components/Select";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { predict } from "../api/client";
+import { getCardCatalog, recommendPortfolio } from "../api/client";
 import type { SpendingCategories } from "../types";
+import { mapPortfolioToPredictionResponse } from "../viewmodels/viewMappers";
+import { useAuth } from "../context/AuthContext";
 
 const SPENDING_CATEGORIES = [
   { key: "groceries" as const, label: "Groceries", max: 3000 },
@@ -38,11 +40,12 @@ const POPULAR_CARDS = [
   { value: "chase_sapphire_preferred", label: "Chase Sapphire Preferred" },
   { value: "amex_gold", label: "Amex Gold Card" },
   { value: "citi_double_cash", label: "Citi Double Cash" },
-  { value: "capital_one_venture", label: "Capital One Venture" },
-  { value: "discover_it", label: "Discover it Cash Back" },
-  { value: "chase_freedom_flex", label: "Chase Freedom Flex" },
-  { value: "amex_platinum", label: "Amex Platinum" },
-  { value: "bofa_customized_cash", label: "BofA Customized Cash" },
+  { value: "capital_one_venture_x", label: "Capital One Venture X" },
+  { value: "discover_it_cash_back", label: "Discover it Cash Back" },
+  { value: "chase_freedom_unlimited", label: "Chase Freedom Unlimited" },
+  { value: "capital_one_savor", label: "Capital One Savor" },
+  { value: "wells_fargo_autograph", label: "Wells Fargo Autograph" },
+  { value: "blue_cash_preferred", label: "Blue Cash Preferred" },
 ];
 
 type CategoryKey = (typeof SPENDING_CATEGORIES)[number]["key"];
@@ -66,6 +69,7 @@ const INITIAL_SPENDING: Record<CategoryKey, number> = {
 
 export default function RecommendPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [spending, setSpending] =
     useState<Record<CategoryKey, number>>(INITIAL_SPENDING);
@@ -77,6 +81,13 @@ export default function RecommendPage() {
   const [apiError, setApiError] = useState("");
 
   const totalSpend = Object.values(spending).reduce((a, b) => a + b, 0);
+
+  useEffect(() => {
+    if (!user?.reward_preference) return;
+    setSelectedRewards((prev) =>
+      prev.length > 0 ? prev : [user.reward_preference],
+    );
+  }, [user]);
 
   function updateSpending(key: CategoryKey, value: number) {
     setSpending((prev) => ({ ...prev, [key]: value }));
@@ -110,12 +121,27 @@ export default function RecommendPage() {
 
     setLoading(true);
     try {
-      const spendingCategories: SpendingCategories = { ...spending };
-      const response = await predict({
-        user_id: `demo-${Date.now()}`,
-        spending_categories: spendingCategories,
-        monthly_spend: totalSpend,
-        preferred_rewards: selectedRewards,
+      // Always send every category key so the API receives a full breakdown (not {}).
+      const spendingCategories: SpendingCategories = {
+        ...INITIAL_SPENDING,
+        ...spending,
+      };
+
+      const start = performance.now();
+      const [portfolioResult, catalog] = await Promise.all([
+        recommendPortfolio({
+          spending_categories: spendingCategories as Record<string, number>,
+          monthly_spend: totalSpend,
+          use_full_catalog: true,
+        }),
+        getCardCatalog(),
+      ]);
+
+      const response = mapPortfolioToPredictionResponse({
+        portfolio: portfolioResult,
+        catalog,
+        totalSpend,
+        latencyMs: Math.round(performance.now() - start),
       });
       navigate("/results", { state: response });
     } catch (err) {

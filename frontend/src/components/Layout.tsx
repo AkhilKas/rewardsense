@@ -1,26 +1,55 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
+import { applyThemePreference } from "../hooks/useTheme";
 
 const publicNavLinks = [
   { to: "/", label: "Home" },
-  { to: "/dashboard", label: "System Status" },
 ];
 
-const authNavLinks = [
+const primaryAuthNavLinks = [
   { to: "/recommend", label: "Recommend" },
+  { to: "/wallet", label: "Wallet" },
+  { to: "/quick-recommend", label: "Quick Recommend" },
+];
+
+const secondaryAuthNavLinks = [
+  { to: "/transactions", label: "Transactions" },
+  { to: "/summary", label: "Summary" },
+  { to: "/dashboard", label: "System Status" },
   { to: "/profile", label: "Profile" },
 ];
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [desktopMoreOpen, setDesktopMoreOpen] = useState(false);
+  const desktopMoreRef = useRef<HTMLDivElement | null>(null);
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      applyThemePreference(user.dark_mode ? "dark" : "light");
+    }
+  }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (!desktopMoreRef.current) return;
+      const target = e.target as Node | null;
+      if (target && !desktopMoreRef.current.contains(target)) {
+        setDesktopMoreOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
   async function handleLogout() {
+    // Navigate out of protected routes first to avoid auth-guard redirects to /login.
+    navigate("/", { replace: true });
     await logout();
-    navigate("/");
   }
 
   return (
@@ -35,7 +64,7 @@ export default function Layout() {
           <div className="hidden sm:flex items-center gap-1">
             <ThemeToggle />
             <nav className="flex items-center gap-1">
-              {[...publicNavLinks, ...(isAuthenticated ? authNavLinks : [])].map(
+              {[...publicNavLinks, ...(isAuthenticated ? primaryAuthNavLinks : [])].map(
                 (link) => (
                   <NavLink
                     key={link.to}
@@ -52,6 +81,42 @@ export default function Layout() {
                     {link.label}
                   </NavLink>
                 ),
+              )}
+              {isAuthenticated && (
+                <div className="relative" ref={desktopMoreRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={desktopMoreOpen}
+                    onClick={() => setDesktopMoreOpen((v) => !v)}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer"
+                  >
+                    More
+                  </button>
+                  <div
+                    className={`absolute right-0 top-full mt-1 min-w-[180px] rounded-md border border-border bg-card shadow-lg p-1 z-50 ${
+                      desktopMoreOpen ? "block" : "hidden"
+                    }`}
+                    role="menu"
+                  >
+                    {secondaryAuthNavLinks.map((link) => (
+                      <NavLink
+                        key={link.to}
+                        to={link.to}
+                        onClick={() => setDesktopMoreOpen(false)}
+                        className={({ isActive }) =>
+                          `block px-3 py-2 rounded-md text-sm transition-colors ${
+                            isActive
+                              ? "bg-primary-light text-primary dark:text-blue-300"
+                              : "text-slate-600 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700"
+                          }`
+                        }
+                      >
+                        {link.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
               )}
             </nav>
             <div className="ml-2 flex items-center gap-2 border-l border-border pl-3">
@@ -126,7 +191,10 @@ export default function Layout() {
         {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
           <nav className="sm:hidden border-t border-border bg-card px-4 pb-3 pt-2 space-y-1 transition-colors duration-200">
-            {[...publicNavLinks, ...(isAuthenticated ? authNavLinks : [])].map(
+            {[
+              ...publicNavLinks,
+              ...(isAuthenticated ? [...primaryAuthNavLinks, ...secondaryAuthNavLinks] : []),
+            ].map(
               (link) => (
                 <NavLink
                   key={link.to}

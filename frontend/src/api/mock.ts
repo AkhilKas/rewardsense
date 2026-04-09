@@ -3,6 +3,16 @@ import type {
   PredictionResponse,
   HealthResponse,
   MonitoringData,
+  CardCatalogItem,
+  PersonaRecommendResponse,
+  PortfolioRecommendRequest,
+  TransactionRecommendRequest,
+  TransactionsResponse,
+  TransactionsExportResponse,
+  SummaryResponse,
+  FeedbackRequest,
+  FeedbackResponse,
+  BusinessMetricsResponse,
 } from "../types";
 
 function delay(ms: number): Promise<void> {
@@ -141,5 +151,201 @@ export async function mockMonitoringData(): Promise<MonitoringData> {
         status: "success",
       },
     ],
+  };
+}
+
+const CATALOG: CardCatalogItem[] = [
+  {
+    card_id: "chase_sapphire_preferred",
+    card_name: "Chase Sapphire Preferred",
+    issuer: "Chase",
+    annual_fee: 95,
+    reward_highlights: ["3x on dining", "2x on travel"],
+    image_url: "/cards/chase-gradient.svg",
+  },
+  {
+    card_id: "amex_gold",
+    card_name: "Amex Gold Card",
+    issuer: "American Express",
+    annual_fee: 250,
+    reward_highlights: ["4x dining", "4x groceries"],
+    image_url: "/cards/amex-gradient.svg",
+  },
+  {
+    card_id: "citi_double_cash",
+    card_name: "Citi Double Cash",
+    issuer: "Citi",
+    annual_fee: 0,
+    reward_highlights: ["2% on all spend"],
+    image_url: "/cards/citi-gradient.svg",
+  },
+];
+
+export async function mockCardsCatalog(): Promise<CardCatalogItem[]> {
+  await delay(250);
+  return CATALOG;
+}
+
+export async function mockRecommendPortfolio(
+  _request: PortfolioRecommendRequest,
+): Promise<PersonaRecommendResponse> {
+  await delay(900);
+  return {
+    ranked: [
+      {
+        card_id: "chase_sapphire_preferred",
+        card_name: "Chase Sapphire Preferred",
+        reward_amount: 112.3,
+        annual_fee: 95,
+        rank: 1,
+        persona_adjustments: { traveler: { category_boost: 1.5 } },
+      },
+      {
+        card_id: "amex_gold",
+        card_name: "Amex Gold Card",
+        reward_amount: 98.7,
+        annual_fee: 250,
+        rank: 2,
+      },
+      {
+        card_id: "citi_double_cash",
+        card_name: "Citi Double Cash",
+        reward_amount: 72.1,
+        annual_fee: 0,
+        rank: 3,
+      },
+    ],
+    best_card_id: "chase_sapphire_preferred",
+    is_personalized: true,
+    is_generic: false,
+    active_personas: ["traveler"],
+    persona_context: "Traveler profile boosted travel and dining rewards.",
+  };
+}
+
+export async function mockRecommendTransaction(
+  request: TransactionRecommendRequest,
+): Promise<PersonaRecommendResponse> {
+  await delay(650);
+  return {
+    ranked: [
+      {
+        card_id: "amex_gold",
+        card_name: "Amex Gold Card",
+        reward_amount: request.amount * 0.04,
+        annual_fee: 250,
+        rank: 1,
+      },
+      {
+        card_id: "chase_sapphire_preferred",
+        card_name: "Chase Sapphire Preferred",
+        reward_amount: request.amount * 0.03,
+        annual_fee: 95,
+        rank: 2,
+      },
+      {
+        card_id: "citi_double_cash",
+        card_name: "Citi Double Cash",
+        reward_amount: request.amount * 0.02,
+        annual_fee: 0,
+        rank: 3,
+      },
+    ],
+    best_card_id: "amex_gold",
+    is_personalized: true,
+    is_generic: false,
+    active_personas: ["cashback-focused"],
+    persona_context: "Cashback-focused profile favors high flat-value returns.",
+  };
+}
+
+export async function mockTransactions(
+  page = 1,
+  pageSize = 10,
+): Promise<TransactionsResponse> {
+  await delay(300);
+  const items: TransactionsResponse["items"] = Array.from({ length: pageSize }).map(
+    (_, i) => {
+    const idx = (page - 1) * pageSize + i + 1;
+    return {
+      id: `tx_${idx}`,
+      merchant: ["Whole Foods", "Uber", "Starbucks"][idx % 3],
+      category: ["groceries", "travel", "dining"][idx % 3],
+      amount: 25 + idx * 3,
+      card_id: ["amex_gold", "chase_sapphire_preferred", "citi_double_cash"][idx % 3],
+      reward_earned: Number((1.2 + idx * 0.15).toFixed(2)),
+      estimated_savings: Number((0.7 + idx * 0.1).toFixed(2)),
+      baseline_savings: Number((0.5 + idx * 0.05).toFixed(2)),
+      timestamp: new Date(Date.now() - idx * 3600000).toISOString(),
+      source_flow: idx % 2 ? "quick_transaction" : "portfolio_recommendation",
+    };
+  });
+  return {
+    items,
+    page,
+    page_size: pageSize,
+    total_items: 84,
+    total_pages: Math.ceil(84 / pageSize),
+  };
+}
+
+export async function mockTransactionsExport(
+  format: "csv" | "xlsx",
+): Promise<TransactionsExportResponse> {
+  await delay(250);
+  return {
+    format,
+    download_url: `/downloads/transactions-${Date.now()}.${format === "csv" ? "csv" : "xlsx"}`,
+  };
+}
+
+export async function mockSummary(): Promise<SummaryResponse> {
+  await delay(350);
+  return {
+    spend_by_category: [
+      { category: "dining", amount: 980 },
+      { category: "travel", amount: 760 },
+      { category: "groceries", amount: 640 },
+    ],
+    rewards_by_category: [
+      { category: "dining", reward_earned: 39.2 },
+      { category: "travel", reward_earned: 22.8 },
+      { category: "groceries", reward_earned: 25.6 },
+    ],
+    savings_by_card: [
+      { card_id: "amex_gold", card_name: "Amex Gold Card", savings: 52.1 },
+      {
+        card_id: "chase_sapphire_preferred",
+        card_name: "Chase Sapphire Preferred",
+        savings: 41.4,
+      },
+      { card_id: "citi_double_cash", card_name: "Citi Double Cash", savings: 28.2 },
+    ],
+    fee_adjusted_savings_total: 104.3,
+  };
+}
+
+export async function mockFeedback(
+  _request: FeedbackRequest,
+): Promise<FeedbackResponse> {
+  await delay(220);
+  return {
+    ok: true,
+    feedback_id: `fb_${Date.now()}`,
+  };
+}
+
+export async function mockBusinessMetrics(): Promise<BusinessMetricsResponse> {
+  await delay(450);
+  return {
+    generated_at: new Date().toISOString(),
+    report_url_html: "/reports/business-metrics-latest.html",
+    report_url_pdf: "/reports/business-metrics-latest.pdf",
+    total_requests: 12847,
+    avg_latency_ms: 1248,
+    p95_latency_ms: 3180,
+    estimated_llm_cost_usd: 42.17,
+    fallback_rate: 0.018,
+    error_rate: 0.003,
   };
 }

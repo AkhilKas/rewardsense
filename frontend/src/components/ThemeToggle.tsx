@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { useTheme } from "../hooks/useTheme";
 import type { ThemePreference } from "../hooks/useTheme";
+import { applyThemePreference } from "../hooks/useTheme";
+import { updateProfile } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
 const icons: Record<ThemePreference, ReactNode> = {
   system: (
@@ -53,11 +56,30 @@ const labels: Record<ThemePreference, string> = {
 };
 
 export default function ThemeToggle() {
-  const { preference, cycle } = useTheme();
+  const { preference } = useTheme();
+  const { isAuthenticated, setUserDarkMode } = useAuth();
+
+  async function handleToggle() {
+    // Use the actual applied theme on <html> to avoid stale hook state races.
+    const isDarkNow = document.documentElement.classList.contains("dark");
+    const next: ThemePreference = isDarkNow ? "light" : "dark";
+    applyThemePreference(next);
+
+    if (!isAuthenticated) return;
+
+    const darkMode = next === "dark";
+    setUserDarkMode(darkMode);
+    try {
+      await updateProfile({ dark_mode: darkMode });
+    } catch {
+      // Keep UI responsive even if persistence fails.
+    }
+  }
 
   return (
     <button
-      onClick={cycle}
+      type="button"
+      onClick={() => void handleToggle()}
       className="p-2 rounded-md text-slate-500 hover:text-secondary hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors duration-200 cursor-pointer"
       aria-label={labels[preference]}
       title={labels[preference]}

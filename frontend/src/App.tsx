@@ -9,6 +9,10 @@ import RecommendPage from "./pages/RecommendPage";
 import ResultsPage from "./pages/ResultsPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
+import WalletPage from "./pages/WalletPage";
+import QuickRecommendPage from "./pages/QuickRecommendPage";
+import TransactionHistoryPage from "./pages/TransactionHistoryPage";
+import ExpenseSummaryPage from "./pages/ExpenseSummaryPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 export default function App() {
@@ -30,6 +34,10 @@ export default function App() {
               <Route path="results" element={<ResultsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="profile" element={<ProfilePage />} />
+              <Route path="wallet" element={<WalletPage />} />
+              <Route path="quick-recommend" element={<QuickRecommendPage />} />
+              <Route path="transactions" element={<TransactionHistoryPage />} />
+              <Route path="summary" element={<ExpenseSummaryPage />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />
