@@ -5,7 +5,12 @@ import Badge from "../components/Badge";
 import Button from "../components/Button";
 import ScoreGauge from "../components/ScoreGauge";
 import Collapsible from "../components/Collapsible";
-import type { PredictionResponse, RecommendedCard } from "../types";
+import type { PredictionResponse } from "../types";
+import type {
+  RecommendationCardViewModel,
+  RecommendationResultViewModel,
+} from "../types/viewmodels";
+import { mapPredictionToRecommendationVM } from "../viewmodels/viewMappers";
 
 const EXPLANATION_FALLBACK =
   "Explanation unavailable — the AI explainer didn't generate text for this card. The score is based on your spending profile and the card's reward structure.";
@@ -14,12 +19,12 @@ const EXPLANATION_FALLBACK =
 /*  Card View — staggered fade-in list                                */
 /* ------------------------------------------------------------------ */
 
-function CardView({ cards }: { cards: RecommendedCard[] }) {
+function CardView({ cards }: { cards: RecommendationCardViewModel[] }) {
   return (
     <div className="space-y-4">
       {cards.map((card, i) => (
         <div
-          key={card.rank}
+          key={card.id}
           className="animate-card-in"
           style={{ animationDelay: `${i * 150}ms` }}
         >
@@ -30,15 +35,15 @@ function CardView({ cards }: { cards: RecommendedCard[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-lg font-bold text-secondary">
-                    {card.card_name}
+                    {card.name}
                   </h2>
                   {card.rank === 1 && (
                     <Badge variant="success">Top Pick</Badge>
                   )}
                 </div>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {card.issuer} &middot; ${card.annual_fee}/yr &middot;{" "}
-                  {card.reward_rate}% avg rewards
+                  {card.issuer} &middot; ${card.annualFee}/yr &middot;{" "}
+                  {card.rewardRate}% avg rewards
                 </p>
               </div>
             </div>
@@ -48,7 +53,7 @@ function CardView({ cards }: { cards: RecommendedCard[] }) {
 
             {/* Benefits */}
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {card.key_benefits.map((b) => (
+              {card.keyBenefits.map((b) => (
                 <Badge key={b} variant="info">
                   {b}
                 </Badge>
@@ -72,7 +77,7 @@ function CardView({ cards }: { cards: RecommendedCard[] }) {
 /*  Compare View — aligned grid rows                                  */
 /* ------------------------------------------------------------------ */
 
-function CompareView({ cards }: { cards: RecommendedCard[] }) {
+function CompareView({ cards }: { cards: RecommendationCardViewModel[] }) {
   const [activeIdx, setActiveIdx] = useState(0);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
@@ -83,7 +88,7 @@ function CompareView({ cards }: { cards: RecommendedCard[] }) {
 
   const cardContent = cards.map((card) => (
     <div
-      key={card.rank}
+      key={card.id}
       className="min-w-[85vw] snap-center md:min-w-0"
     >
       <Card padding="sm" className="flex flex-col h-full">
@@ -104,10 +109,10 @@ function CompareView({ cards }: { cards: RecommendedCard[] }) {
         {/* Row 3 — Name & issuer */}
         <div className="text-center mb-3 min-h-[56px]">
           <h3 className="font-bold text-secondary text-sm leading-tight">
-            {card.card_name}
+            {card.name}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {card.issuer} &middot; ${card.annual_fee}/yr
+            {card.issuer} &middot; ${card.annualFee}/yr
           </p>
         </div>
 
@@ -119,7 +124,7 @@ function CompareView({ cards }: { cards: RecommendedCard[] }) {
         {/* Row 5 — Benefits */}
         <div className="mb-3 min-h-[72px]">
           <div className="flex flex-wrap gap-1">
-            {card.key_benefits.slice(0, 4).map((b) => (
+            {card.keyBenefits.slice(0, 4).map((b) => (
               <Badge key={b} variant="info" className="text-[10px]">
                 {b}
               </Badge>
@@ -175,12 +180,11 @@ function ScoreBreakdownBar({
   card,
   compact = false,
 }: {
-  card: RecommendedCard;
+  card: RecommendationCardViewModel;
   compact?: boolean;
 }) {
-  const total =
-    card.score_breakdown.deterministic + card.score_breakdown.personalization;
-  const detPct = total > 0 ? (card.score_breakdown.deterministic / total) * 100 : 50;
+  const total = card.scoreBreakdown.base + card.scoreBreakdown.boosted;
+  const detPct = total > 0 ? (card.scoreBreakdown.base / total) * 100 : 50;
   const persPct = 100 - detPct;
   const textClass = compact
     ? "text-[10px] text-slate-500 dark:text-slate-400"
@@ -189,8 +193,8 @@ function ScoreBreakdownBar({
   return (
     <div className="mb-3">
       <div className={`flex items-center justify-between mb-1 ${textClass}`}>
-        <span>Base: {card.score_breakdown.deterministic.toFixed(1)}</span>
-        <span>Boosted: {card.score_breakdown.personalization.toFixed(1)}</span>
+        <span>Base: {card.scoreBreakdown.base.toFixed(1)}</span>
+        <span>Boosted: {card.scoreBreakdown.boosted.toFixed(1)}</span>
       </div>
       <div className="h-2 rounded-full bg-border overflow-hidden flex">
         <div className="bg-primary/70 h-full" style={{ width: `${detPct}%` }} />
@@ -219,8 +223,10 @@ function ScoreBreakdownBar({
 export default function ResultsPage() {
   const location = useLocation();
 
-  const [results] = useState<PredictionResponse | null>(
-    () => location.state as PredictionResponse | null,
+  const [results] = useState<RecommendationResultViewModel | null>(() => {
+    const state = location.state as PredictionResponse | null;
+    return state ? mapPredictionToRecommendationVM(state) : null;
+  }
   );
 
   const [view, setView] = useState<"cards" | "compare">("cards");
@@ -246,8 +252,8 @@ export default function ResultsPage() {
         <div>
           <h1 className="text-3xl font-bold text-secondary">Your Results</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {results.recommended_cards.length} cards ranked &middot; analyzed
-            in {results.inference_latency_ms}ms
+            {results.cards.length} cards ranked &middot; analyzed
+            in {results.latencyMs}ms
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -284,9 +290,9 @@ export default function ResultsPage() {
 
       {/* Content */}
       {view === "cards" ? (
-        <CardView cards={results.recommended_cards} />
+        <CardView cards={results.cards} />
       ) : (
-        <CompareView cards={results.recommended_cards} />
+        <CompareView cards={results.cards} />
       )}
     </div>
   );
