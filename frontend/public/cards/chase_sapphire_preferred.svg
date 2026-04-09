@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 215" fill="none">
+  <rect width="340" height="215" rx="12" fill="#00175a"/>
+  <rect x="24" y="24" width="50" height="36" rx="4" fill="#c4a35a" opacity="0.8"/>
+  <text x="170" y="130" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="16" font-weight="600">Chase Sapphire</text>
+  <text x="170" y="152" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="16" font-weight="600">Preferred</text>
+  <text x="170" y="185" text-anchor="middle" fill="#9cb8e8" font-family="system-ui" font-size="12">Chase</text>
+</svg>

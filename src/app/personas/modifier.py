@@ -126,6 +126,61 @@ class PersonaModifier:
             if p in self._personas
         ]
 
+    def card_persona_reason(
+        self,
+        card: Dict[str, Any],
+        active_personas: List[str],
+        category: str,
+    ) -> str:
+        """Return a human-readable explanation of why *card* suits the personas.
+
+        Parameters
+        ----------
+        card:
+            A scored card dict (must include ``card_id``, ``card_name``,
+            ``annual_fee``, and optionally ``persona_adjustments``).
+        active_personas:
+            Persona keys active for the current user.
+        category:
+            Transaction category being evaluated.
+
+        Returns
+        -------
+        str — one or two sentence explanation.
+        """
+        valid = [p for p in active_personas if p in self._personas]
+        if not valid:
+            return "No active persona — ranked by raw reward value."
+
+        parts: List[str] = []
+        annual_fee = float(card.get("annual_fee", 0.0))
+        adj = card.get("persona_adjustments") or {}
+
+        category_boost = float(adj.get("category_boost_applied", 1.0))
+        fee_multiplier = float(adj.get("fee_multiplier_applied", 1.0))
+
+        descriptions = [self._personas[p].get("description", p) for p in valid]
+        parts.append(f"Matches {', '.join(valid)} ({'; '.join(descriptions)}).")
+
+        if category_boost > 1.0:
+            parts.append(
+                f"{category} rewards boosted ×{category_boost:.2f} for this persona."
+            )
+
+        if annual_fee == 0:
+            if fee_multiplier > 1.0:
+                parts.append("No annual fee — ideal for fee-sensitive personas.")
+        elif fee_multiplier > 1.0:
+            parts.append(
+                f"${annual_fee:.0f} annual fee is penalised under fee-sensitive persona."
+            )
+        elif fee_multiplier < 1.0:
+            parts.append(
+                f"${annual_fee:.0f} annual fee is discounted — persona favours premium benefits."
+            )
+
+        return " ".join(parts)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

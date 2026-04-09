@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 215" fill="none">
+  <rect width="340" height="215" rx="12" fill="#c4a35a"/>
+  <rect x="24" y="24" width="50" height="36" rx="4" fill="#fff" opacity="0.3"/>
+  <text x="170" y="140" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="16" font-weight="600">Amex Gold</text>
+  <text x="170" y="170" text-anchor="middle" fill="#fff9e6" font-family="system-ui" font-size="12">American Express</text>
+</svg>

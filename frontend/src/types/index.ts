@@ -109,6 +109,15 @@ export interface ProfilePatch {
   dark_mode?: boolean;
 }
 
+export interface CardDisplayInfo {
+  card_id: string;
+  card_name: string;
+  issuer: string;
+  annual_fee: number;
+  reward_highlights: string[];
+  image_url: string | null;
+}
+
 export interface CardCatalogItem {
   card_id: string;
   card_name: string;

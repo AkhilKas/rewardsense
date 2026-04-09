@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 215" fill="none">
+  <rect width="340" height="215" rx="12" fill="#003b70"/>
+  <rect x="24" y="24" width="50" height="36" rx="4" fill="#c4a35a" opacity="0.8"/>
+  <text x="170" y="140" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="16" font-weight="600">Citi Double Cash</text>
+  <text x="170" y="170" text-anchor="middle" fill="#8fb8e8" font-family="system-ui" font-size="12">Citi</text>
+</svg>
