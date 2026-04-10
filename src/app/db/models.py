@@ -17,7 +17,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    Float
+    Float,
 )
 from sqlalchemy.orm import relationship
 
@@ -59,14 +59,14 @@ class User(Base):
         cascade="all, delete-orphan",
     )
     transaction_logs = relationship(
-    "TransactionLog",
-    back_populates="user",
-    cascade="all, delete-orphan",
+        "TransactionLog",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     recommendation_events = relationship(
-    "RecommendationEvent",
-    back_populates="user",
-    cascade="all, delete-orphan",
+        "RecommendationEvent",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
 
@@ -118,10 +118,12 @@ class SavedCard(Base):
 
     user = relationship("User", back_populates="saved_cards")
 
+
 class RecommendationEvent(Base):
     """
     Captures a recommendation request for later linkage to transactions/feedback.
     """
+
     __tablename__ = "recommendation_events"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -142,10 +144,12 @@ class RecommendationEvent(Base):
         back_populates="recommendation_event",
     )
 
+
 class TransactionLog(Base):
     """
     User-owned transaction log entry
     """
+
     __tablename__ = "transaction_logs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -157,7 +161,9 @@ class TransactionLog(Base):
     chosen_card_name = Column(String, nullable=True)
     reward_earned = Column(Float, nullable=False, default=0.0)
     estimated_savings = Column(Float, nullable=False, default=0.0)
-    source_flow = Column(String, nullable=False, default="manual")  # "manual" | "portfolio" | "transaction"
+    source_flow = Column(
+        String, nullable=False, default="manual"
+    )  # "manual" | "portfolio" | "transaction"
     card_was_saved = Column(Boolean, nullable=False, default=False)
     recommendation_event_id = Column(
         Integer, ForeignKey("recommendation_events.id"), nullable=True
