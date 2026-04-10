@@ -1,9 +1,10 @@
-"""Inference logging for monitoring (Story 2.5).
+"""
+Inference logging for monitoring.
 
 Asynchronously writes JSON log records to a GCS bucket on every
 ``/predict`` call.  Records are date-partitioned under
 ``gs://<bucket>/YYYY/MM/DD/<request_id>.json`` so the monitoring
-pipeline (Epic 4) can query them by date range.
+pipeline can query them by date range.
 
 The logger is designed to be used as a **FastAPI BackgroundTask** so
 that it adds negligible latency to the response path.
@@ -80,11 +81,35 @@ def build_log_record(
     latency_breakdown: Dict[str, float],
     is_personalized: bool,
     explanation_latency_ms: Optional[float] = None,
+    # --- Story 5.1 extensions (all optional for backward compat) ---
+    recommendation_flow: str = "predict",
+    request_status: str = "success",
+    llm_telemetry: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Construct a structured JSON log record for one inference request.
 
     All personally-identifiable information should already be hashed/anonymised
     by the caller (``user_hash`` is a truncated SHA-256 of ``user_id``).
+
+    Story 5.1 additions
+    --------------------
+    recommendation_flow : str
+        Which endpoint produced this record.  One of ``"predict"``,
+        ``"portfolio"``, ``"transaction"``.
+    request_status : str
+        ``"success"`` or ``"error"``.
+    llm_telemetry : dict, optional
+        LLM-specific metrics for business reporting::
+
+            {
+                "llm_calls": int,
+                "llm_successes": int,
+                "llm_fallbacks": int,
+                "llm_model_name": str | None,
+                "llm_token_estimate": int | None,
+                "llm_cost_estimate_usd": float | None,
+                "llm_prompt_version": str | None,
+            }
     """
     now = datetime.now(timezone.utc)
     record: Dict[str, Any] = {
@@ -97,9 +122,14 @@ def build_log_record(
         "model_version": model_version,
         "latency_breakdown_ms": latency_breakdown,
         "is_personalized": is_personalized,
+        # Story 5.1 fields
+        "recommendation_flow": recommendation_flow,
+        "request_status": request_status,
     }
     if explanation_latency_ms is not None:
         record["explanation_latency_ms"] = round(explanation_latency_ms, 3)
+    if llm_telemetry is not None:
+        record["llm_telemetry"] = llm_telemetry
     return record
 
 
@@ -160,7 +190,7 @@ def _write_to_local(record: Dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Public API — intended to be called inside BackgroundTasks
+# Public API -- intended to be called inside BackgroundTasks
 # ---------------------------------------------------------------------------
 
 
