@@ -1,4 +1,5 @@
-"""SQLAlchemy ORM models for RewardSense application DB.
+"""
+SQLAlchemy ORM models for RewardSense application DB.
 
 Story 1.1 tables: users, auth_credentials.
 Story 1.2 tables: user_settings, user_personas, saved_cards.
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    Float
 )
 from sqlalchemy.orm import relationship
 
@@ -55,6 +57,16 @@ class User(Base):
         "SavedCard",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    transaction_logs = relationship(
+    "TransactionLog",
+    back_populates="user",
+    cascade="all, delete-orphan",
+    )
+    recommendation_events = relationship(
+    "RecommendationEvent",
+    back_populates="user",
+    cascade="all, delete-orphan",
     )
 
 
@@ -105,3 +117,58 @@ class SavedCard(Base):
     )
 
     user = relationship("User", back_populates="saved_cards")
+
+class RecommendationEvent(Base):
+    """
+    Captures a recommendation request for later linkage to transactions/feedback.
+    """
+    __tablename__ = "recommendation_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    flow = Column(String, nullable=False)  # "portfolio" | "transaction"
+    top_card_id = Column(String, nullable=True)
+    top_card_name = Column(String, nullable=True)
+    request_payload = Column(String, nullable=True)  # JSON string
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    user = relationship("User", back_populates="recommendation_events")
+    transaction_logs = relationship(
+        "TransactionLog",
+        back_populates="recommendation_event",
+    )
+
+class TransactionLog(Base):
+    """
+    User-owned transaction log entry
+    """
+    __tablename__ = "transaction_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    merchant = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    chosen_card_id = Column(String, nullable=True)
+    chosen_card_name = Column(String, nullable=True)
+    reward_earned = Column(Float, nullable=False, default=0.0)
+    estimated_savings = Column(Float, nullable=False, default=0.0)
+    source_flow = Column(String, nullable=False, default="manual")  # "manual" | "portfolio" | "transaction"
+    card_was_saved = Column(Boolean, nullable=False, default=False)
+    recommendation_event_id = Column(
+        Integer, ForeignKey("recommendation_events.id"), nullable=True
+    )
+    timestamp = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    user = relationship("User", back_populates="transaction_logs")
+    recommendation_event = relationship(
+        "RecommendationEvent", back_populates="transaction_logs"
+    )

@@ -1,4 +1,6 @@
-"""Serving layer for RewardSense recommendations + LLM explanations."""
+"""
+Serving layer for RewardSense recommendations + LLM explanations.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from src.model_pipeline.llm.validators import (
 )
 from src.model_pipeline.personalization.personalized_scorer import PersonalizedScorer
 from src.model_pipeline.tracking import RewardSenseTracker
+from src.app.transactions.router import router as transactions_router
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +402,7 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
     )
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(transactions_router)
     runtime_service = service or build_default_service()
 
     @app.get("/health")
