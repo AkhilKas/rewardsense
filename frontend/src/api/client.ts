@@ -13,7 +13,8 @@ import type {
   TransactionRecommendRequest,
   PersonaRecommendResponse,
   TransactionsResponse,
-  TransactionsExportResponse,
+  TransactionCreateRequest,
+  TransactionLogEntry,
   SummaryResponse,
   FeedbackRequest,
   FeedbackResponse,
@@ -30,7 +31,6 @@ import {
   mockRecommendPortfolio,
   mockRecommendTransaction,
   mockTransactions,
-  mockTransactionsExport,
   mockSummary,
   mockFeedback,
   mockBusinessMetrics,
@@ -232,22 +232,64 @@ export async function recommendTransaction(
   return res.json() as Promise<PersonaRecommendResponse>;
 }
 
-// Missing backend endpoints in Phase 4 — intentionally mock-backed.
 export async function getTransactions(
   page = 1,
-  pageSize = 10,
+  pageSize = 20,
 ): Promise<TransactionsResponse> {
-  return mockTransactions(page, pageSize);
+  if (USE_MOCK) return mockTransactions(page, pageSize);
+
+  const res = await fetch(
+    `${API_BASE_URL}/transactions?page=${page}&page_size=${pageSize}`,
+    { headers: authHeaders() },
+  );
+  handleUnauthorized(res.status);
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<TransactionsResponse>;
+}
+
+export async function createTransaction(
+  payload: TransactionCreateRequest,
+): Promise<TransactionLogEntry> {
+  const res = await fetch(`${API_BASE_URL}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<TransactionLogEntry>;
 }
 
 export async function exportTransactions(
   format: "csv" | "xlsx",
-): Promise<TransactionsExportResponse> {
-  return mockTransactionsExport(format);
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/transactions/export?format=${format}`,
+    { headers: authHeaders() },
+  );
+  handleUnauthorized(res.status);
+  if (!res.ok) throw await buildApiError(res);
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rewardsense_transactions.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export async function getSummary(): Promise<SummaryResponse> {
-  return mockSummary();
+  if (USE_MOCK) return mockSummary();
+
+  const res = await fetch(`${API_BASE_URL}/summary`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<SummaryResponse>;
 }
 
 export async function submitFeedback(

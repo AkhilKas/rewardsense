@@ -180,36 +180,60 @@ export interface PersonaRecommendResponse {
 }
 
 export interface TransactionLogEntry {
-  id: string;
+  id: number;
   merchant: string;
-  category: string;
   amount: number;
-  card_id: string;
+  category: string;
+  chosen_card_id: string | null;
+  chosen_card_name: string | null;
   reward_earned: number;
   estimated_savings: number;
-  baseline_savings: number;
+  source_flow: string;
+  card_was_saved: boolean;
+  recommendation_event_id: number | null;
   timestamp: string;
-  source_flow: "quick_transaction" | "portfolio_recommendation";
 }
 
 export interface TransactionsResponse {
-  items: TransactionLogEntry[];
+  transactions: TransactionLogEntry[];
+  total: number;
   page: number;
   page_size: number;
-  total_items: number;
-  total_pages: number;
+  has_next: boolean;
 }
 
-export interface TransactionsExportResponse {
-  format: "csv" | "xlsx";
-  download_url: string;
+export interface CategorySummaryItem {
+  category: string;
+  total_spend: number;
+  total_reward: number;
+  total_savings: number;
+  transaction_count: number;
+}
+
+export interface CardSummaryItem {
+  card_id: string | null;
+  card_name: string | null;
+  total_spend: number;
+  total_reward: number;
+  total_savings: number;
+  transaction_count: number;
+}
+
+export interface TopInsight {
+  label: string;
+  value: string;
 }
 
 export interface SummaryResponse {
-  spend_by_category: Array<{ category: string; amount: number }>;
-  rewards_by_category: Array<{ category: string; reward_earned: number }>;
-  savings_by_card: Array<{ card_id: string; card_name: string; savings: number }>;
-  fee_adjusted_savings_total: number;
+  spend_by_category: CategorySummaryItem[];
+  rewards_by_category: CategorySummaryItem[];
+  savings_by_card: CardSummaryItem[];
+  total_spend: number;
+  total_rewards: number;
+  total_savings: number;
+  fee_adjusted_savings: number;
+  transaction_count: number;
+  top_insights: TopInsight[];
 }
 
 export interface FeedbackRequest {
@@ -234,4 +258,17 @@ export interface BusinessMetricsResponse {
   estimated_llm_cost_usd: number;
   fallback_rate: number;
   error_rate: number;
+}
+
+export interface TransactionCreateRequest {
+  merchant: string;
+  amount: number;
+  category: string;
+  chosen_card_id?: string;
+  chosen_card_name?: string;
+  reward_earned?: number;
+  estimated_savings?: number;
+  source_flow?: string;
+  recommendation_event_id?: number;
+  timestamp?: string;
 }
