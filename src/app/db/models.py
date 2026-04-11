@@ -68,6 +68,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    feedbacks = relationship(
+        "FeedbackEvent",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class AuthCredential(Base):
@@ -142,6 +147,76 @@ class RecommendationEvent(Base):
     transaction_logs = relationship(
         "TransactionLog",
         back_populates="recommendation_event",
+    )
+    feedbacks = relationship(
+        "FeedbackEvent",
+        back_populates="recommendation_event",
+    )
+    llm_telemetry_events = relationship(
+        "LLMTelemetryEvent",
+        back_populates="recommendation_event",
+    )
+
+
+class FeedbackEvent(Base):
+    """
+    Captures like/dislike feedback on recommendation cards or explanations.
+    Story 4.1 — data for future retraining and analytics, no live ranking change.
+    """
+
+    __tablename__ = "feedback_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    card_id = Column(String, nullable=False)
+    recommendation_event_id = Column(
+        Integer, ForeignKey("recommendation_events.id"), nullable=True
+    )
+    reaction = Column(String, nullable=False)  # "like" | "dislike"
+    reason_tag = Column(String, nullable=True)  # optional reason tag
+    target = Column(String, nullable=False, default="card")  # "card" | "explanation"
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    user = relationship("User", back_populates="feedbacks")
+    recommendation_event = relationship(
+        "RecommendationEvent", back_populates="feedbacks"
+    )
+
+
+class LLMTelemetryEvent(Base):
+    """
+    Per-explanation telemetry for prompt drift tracking and quality monitoring.
+    Story 4.3 — internal-only, not exposed to frontend.
+    """
+
+    __tablename__ = "llm_telemetry_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recommendation_event_id = Column(
+        Integer, ForeignKey("recommendation_events.id"), nullable=True
+    )
+    card_id = Column(String, nullable=True)
+    prompt_version_hash = Column(String, nullable=False, index=True)
+    model_name = Column(String, nullable=False)
+    temperature = Column(Float, nullable=False, default=0.0)
+    latency_ms = Column(Float, nullable=False)
+    used_fallback = Column(Boolean, nullable=False, default=False)
+    fallback_reason = Column(String, nullable=True)
+    token_estimate = Column(Integer, nullable=True)
+    cost_estimate_usd = Column(Float, nullable=True)
+    output_quality_score = Column(Float, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    recommendation_event = relationship(
+        "RecommendationEvent", back_populates="llm_telemetry_events"
     )
 
 

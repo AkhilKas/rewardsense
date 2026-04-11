@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation, Navigate, Link } from "react-router-dom";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import Button from "../components/Button";
 import ScoreGauge from "../components/ScoreGauge";
 import Collapsible from "../components/Collapsible";
-import type { PredictionResponse } from "../types";
+import FeedbackButtons from "../components/FeedbackButtons";
+import { submitFeedback } from "../api/client";
+import type { PredictionResponse, FeedbackReasonTag } from "../types";
 import type {
   RecommendationCardViewModel,
   RecommendationResultViewModel,
@@ -15,11 +17,38 @@ import { mapPredictionToRecommendationVM } from "../viewmodels/viewMappers";
 const EXPLANATION_FALLBACK =
   "Explanation unavailable — the AI explainer didn't generate text for this card. The score is based on your spending profile and the card's reward structure.";
 
+const FALLBACK_PROS = [
+  "Strong reward rate for your spending profile.",
+  "Competitive benefits compared to alternatives.",
+];
+const FALLBACK_CONS = [
+  "Annual fee may offset rewards for low spenders.",
+  "Reward rates may vary by merchant within categories.",
+];
+
 /* ------------------------------------------------------------------ */
 /*  Card View — staggered fade-in list                                */
 /* ------------------------------------------------------------------ */
 
+function useFeedbackHandler() {
+  return useCallback(
+    (cardId: string, target: "card" | "explanation") =>
+      (reaction: "like" | "dislike", reasonTag?: FeedbackReasonTag) => {
+        submitFeedback({
+          card_id: cardId,
+          reaction,
+          reason_tag: reasonTag,
+          target,
+        }).catch(() => {
+          /* fire-and-forget */
+        });
+      },
+    [],
+  );
+}
+
 function CardView({ cards }: { cards: RecommendationCardViewModel[] }) {
+  const makeFeedbackHandler = useFeedbackHandler();
   return (
     <div className="space-y-4">
       {cards.map((card, i) => (
@@ -60,12 +89,52 @@ function CardView({ cards }: { cards: RecommendationCardViewModel[] }) {
               ))}
             </div>
 
-            {/* Collapsible explanation */}
+            {/* Structured explanation */}
             <Collapsible title="Why this card?" defaultOpen={card.rank === 1}>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
                 {card.explanation || EXPLANATION_FALLBACK}
               </p>
+
+              {/* Pros */}
+              <div className="mb-2">
+                <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-1">Pros</h4>
+                <ul className="space-y-1">
+                  {(card.pros.length > 0 ? card.pros : FALLBACK_PROS).map((pro, j) => (
+                    <li key={j} className="flex items-start gap-1.5 text-sm text-slate-600 dark:text-slate-400">
+                      <span className="text-green-500 mt-0.5 shrink-0">&#10003;</span>
+                      <span>{pro}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Cons */}
+              <div className="mb-2">
+                <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1">Cons</h4>
+                <ul className="space-y-1">
+                  {(card.cons.length > 0 ? card.cons : FALLBACK_CONS).map((con, j) => (
+                    <li key={j} className="flex items-start gap-1.5 text-sm text-slate-600 dark:text-slate-400">
+                      <span className="text-amber-500 mt-0.5 shrink-0">&#9888;</span>
+                      <span>{con}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Best for */}
+              {card.bestFor && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 italic">
+                  Best for: {card.bestFor}
+                </p>
+              )}
             </Collapsible>
+
+            {/* Feedback */}
+            <FeedbackButtons
+              cardId={card.id}
+              target="card"
+              onSubmit={makeFeedbackHandler(card.id, "card")}
+            />
           </Card>
         </div>
       ))}
@@ -132,11 +201,23 @@ function CompareView({ cards }: { cards: RecommendationCardViewModel[] }) {
           </div>
         </div>
 
-        {/* Row 6 — Explanation snippet */}
+        {/* Row 6 — Explanation with pros/cons */}
         <div className="flex-1 min-h-[80px]">
-          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-4">
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 mb-1">
             {card.explanation || EXPLANATION_FALLBACK}
           </p>
+          <div className="space-y-0.5">
+            {(card.pros.length > 0 ? card.pros : FALLBACK_PROS).slice(0, 1).map((pro, j) => (
+              <p key={j} className="text-[10px] text-green-600 dark:text-green-400 truncate">
+                &#10003; {pro}
+              </p>
+            ))}
+            {(card.cons.length > 0 ? card.cons : FALLBACK_CONS).slice(0, 1).map((con, j) => (
+              <p key={j} className="text-[10px] text-amber-600 dark:text-amber-400 truncate">
+                &#9888; {con}
+              </p>
+            ))}
+          </div>
         </div>
       </Card>
     </div>

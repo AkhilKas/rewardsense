@@ -62,7 +62,9 @@ class _FakeLLMClient:
     def generate(self, system_message: str, user_message: str, **kwargs) -> str:
         return (
             '{"summary":"Use Amex Gold for Chipotle.",'
-            '"rationale":["Amex Gold earns 4x on dining","It gives the highest expected reward"],'
+            '"pros":["Amex Gold earns 4x on dining","Highest expected reward for this category"],'
+            '"cons":["Annual fee may offset rewards for light spenders","Limited cashback flexibility"],'
+            '"best_for":"Frequent diners",'
             '"confidence":0.96}'
         )
 

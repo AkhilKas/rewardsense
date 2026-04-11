@@ -111,6 +111,9 @@ class RewardSenseService:
 
         explanation = {
             "summary": generated.summary,
+            "pros": generated.pros,
+            "cons": generated.cons,
+            "best_for": generated.best_for,
             "rationale": generated.rationale,
             "confidence": generated.confidence,
             "disclaimers": generated.disclaimers,
@@ -118,6 +121,8 @@ class RewardSenseService:
             "fallback_reason": generated.fallback_reason,
             "latency_ms": generated.latency_ms,
             "quality_checks": generated.quality_checks,
+            "prompt_hash": generated.prompt_hash,
+            "model_name": generated.model_name,
             "factual_accuracy": {
                 "score": factual.score,
                 "passed": factual.passed,
@@ -244,53 +249,10 @@ def build_default_service() -> RewardSenseService:
 
 
 # ---------------------------------------------------------------------------
-# Default card catalog — shipped with the container.
+# Default card catalog — loaded from shared catalog module.
 # Used by /predict when the caller does not supply an explicit portfolio.
-# Format matches what RewardCalculator expects (card_id, card_name,
-# reward_rates dict, annual_fee).
 # ---------------------------------------------------------------------------
-_DEFAULT_CARDS: List[Dict[str, Any]] = [
-    {
-        "card_id": "chase_sapphire_preferred",
-        "card_name": "Chase Sapphire Preferred",
-        "reward_rates": {
-            "dining": 3.0,
-            "travel": 2.0,
-            "groceries": 1.0,
-            "universal_base_rate": 1.0,
-        },
-        "annual_fee": 95,
-    },
-    {
-        "card_id": "amex_gold",
-        "card_name": "Amex Gold",
-        "reward_rates": {
-            "dining": 4.0,
-            "groceries": 4.0,
-            "travel": 3.0,
-            "universal_base_rate": 1.0,
-        },
-        "annual_fee": 250,
-    },
-    {
-        "card_id": "citi_double_cash",
-        "card_name": "Citi Double Cash",
-        "reward_rates": {"universal_base_rate": 2.0},
-        "annual_fee": 0,
-    },
-    {
-        "card_id": "capital_one_venture",
-        "card_name": "Capital One Venture",
-        "reward_rates": {"travel": 5.0, "universal_base_rate": 2.0},
-        "annual_fee": 95,
-    },
-    {
-        "card_id": "discover_it",
-        "card_name": "Discover it Cash Back",
-        "reward_rates": {"universal_base_rate": 1.0},
-        "annual_fee": 0,
-    },
-]
+from src.app.cards.catalog import CARD_CATALOG as _DEFAULT_CARDS  # noqa: E402
 
 
 if FASTAPI_AVAILABLE:
@@ -341,13 +303,18 @@ if FASTAPI_AVAILABLE:
 
     class ExplanationResponse(StrictBaseModel):
         summary: str
-        rationale: List[str]
+        pros: List[str] = []
+        cons: List[str] = []
+        best_for: str = ""
+        rationale: List[str] = []
         confidence: float
-        disclaimers: List[str]
+        disclaimers: List[str] = []
         used_fallback: bool
         fallback_reason: Optional[str] = None
         latency_ms: float
         quality_checks: Dict[str, bool]
+        prompt_hash: str = ""
+        model_name: str = ""
         factual_accuracy: FactualAccuracyResponse
         readability: ReadabilityResponse
 
@@ -383,6 +350,7 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
 
     from src.app.auth.router import router as auth_router
     from src.app.db.init_db import init_db
+    from src.app.feedback.router import router as feedback_router
     from src.app.users.router import router as users_router
 
     @asynccontextmanager
@@ -403,6 +371,7 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(transactions_router)
+    app.include_router(feedback_router)
     runtime_service = service or build_default_service()
 
     @app.get("/health")

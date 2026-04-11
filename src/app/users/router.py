@@ -14,6 +14,11 @@ from src.app.db.models import User
 from src.app.personas.modifier import PersonaModifier
 from src.model_pipeline.personalization.personalized_scorer import PersonalizedScorer
 from src.app.users import service
+from src.app.cards.catalog import (
+    DISPLAY_CATALOG,
+    DISPLAY_CATALOG_BY_ID,
+    get_scoring_rates,
+)
 from src.app.users.schemas import (
     CardCatalogItem,
     CardDisplayInfo,
@@ -105,57 +110,15 @@ _MERCHANT_CATEGORY_HINTS: Dict[str, List[str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Card catalog with image URLs keyed by stable card_id slug
+# Card catalog — loaded from shared module (pipeline + curated cards)
 # ---------------------------------------------------------------------------
-_CARD_IMAGE_PATH = "/cards/{card_id}.svg"
-
-_CATALOG: List[CardCatalogItem] = [
-    CardCatalogItem(
-        card_id="chase_sapphire_preferred",
-        card_name="Chase Sapphire Preferred",
-        issuer="Chase",
-        annual_fee=95,
-        reward_highlights=["3x dining", "2x travel", "1x everything else"],
-        image_url=_CARD_IMAGE_PATH.format(card_id="chase_sapphire_preferred"),
-    ),
-    CardCatalogItem(
-        card_id="amex_gold",
-        card_name="Amex Gold",
-        issuer="American Express",
-        annual_fee=250,
-        reward_highlights=["4x dining", "4x groceries", "3x travel"],
-        image_url=_CARD_IMAGE_PATH.format(card_id="amex_gold"),
-    ),
-    CardCatalogItem(
-        card_id="citi_double_cash",
-        card_name="Citi Double Cash",
-        issuer="Citi",
-        annual_fee=0,
-        reward_highlights=["2% cash back on everything"],
-        image_url=_CARD_IMAGE_PATH.format(card_id="citi_double_cash"),
-    ),
-    CardCatalogItem(
-        card_id="capital_one_venture",
-        card_name="Capital One Venture",
-        issuer="Capital One",
-        annual_fee=95,
-        reward_highlights=["5x travel via Capital One", "2x everything else"],
-        image_url=_CARD_IMAGE_PATH.format(card_id="capital_one_venture"),
-    ),
-    CardCatalogItem(
-        card_id="discover_it",
-        card_name="Discover it Cash Back",
-        issuer="Discover",
-        annual_fee=0,
-        reward_highlights=["5% rotating categories", "1% everything else"],
-        image_url=_CARD_IMAGE_PATH.format(card_id="discover_it"),
-    ),
-]
+_CATALOG: List[CardCatalogItem] = DISPLAY_CATALOG
+_CATALOG_BY_ID: Dict[str, CardCatalogItem] = DISPLAY_CATALOG_BY_ID
 
 
 @router.get("/cards/catalog", response_model=List[CardCatalogItem])
 def get_card_catalog() -> List[CardCatalogItem]:
-    """Public endpoint — returns the curated card list."""
+    """Public endpoint — returns the full card catalog."""
     return _CATALOG
 
 
@@ -196,9 +159,6 @@ def put_saved_cards(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-# Catalog keyed by card_id for O(1) lookup
-_CATALOG_BY_ID: Dict[str, CardCatalogItem] = {c.card_id: c for c in _CATALOG}
-
 
 def _card_display_for(card_id: Optional[str]) -> Optional[CardDisplayInfo]:
     """Build a CardDisplayInfo from the catalog, or None if unknown."""
@@ -217,31 +177,6 @@ def _card_display_for(card_id: Optional[str]) -> Optional[CardDisplayInfo]:
     )
 
 
-# Scoring engine portfolio format for a given card_id
-_SCORING_RATES: Dict[str, Dict[str, Any]] = {
-    "chase_sapphire_preferred": {
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"dining": 3.0, "travel": 2.0},
-        }
-    },
-    "amex_gold": {
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"dining": 4.0, "groceries": 4.0, "travel": 3.0},
-        }
-    },
-    "citi_double_cash": {"reward_rates": {"universal_base_rate": 2.0}},
-    "capital_one_venture": {
-        "reward_rates": {
-            "universal_base_rate": 2.0,
-            "category_bonuses": {"travel": 5.0},
-        }
-    },
-    "discover_it": {"reward_rates": {"universal_base_rate": 1.0}},
-}
-
-
 def _build_portfolio(card_ids: List[str]) -> List[Dict[str, Any]]:
     """Build scorer-compatible portfolio dicts from card IDs."""
     portfolio = []
@@ -250,7 +185,7 @@ def _build_portfolio(card_ids: List[str]) -> List[Dict[str, Any]]:
         if catalog_card is None:
             logger.warning("Saved card_id %r not in catalog — skipped", cid)
             continue
-        rates = _SCORING_RATES.get(cid, {"reward_rates": {"universal_base_rate": 1.0}})
+        rates = get_scoring_rates(cid)
         portfolio.append(
             {
                 "card_id": cid,
@@ -589,7 +524,7 @@ _DEFAULT_CATEGORIES: Dict[str, float] = {
 
 def _is_catch_all(card_id: str) -> bool:
     """True when the card has no category bonuses (flat-rate only)."""
-    rates = _SCORING_RATES.get(card_id, {}).get("reward_rates", {})
+    rates = get_scoring_rates(card_id).get("reward_rates", {})
     bonuses = rates.get("category_bonuses")
     return not bonuses
 
@@ -599,9 +534,7 @@ def _find_baseline(saved_card_ids: List[str]) -> Dict[str, Any]:
     for cid in saved_card_ids:
         if _is_catch_all(cid) and cid in _CATALOG_BY_ID:
             cat = _CATALOG_BY_ID[cid]
-            rates = _SCORING_RATES.get(
-                cid, {"reward_rates": {"universal_base_rate": 1.0}}
-            )
+            rates = get_scoring_rates(cid)
             return {
                 "card_id": cid,
                 "card_name": cat.card_name,

@@ -30,25 +30,29 @@ class BuiltPrompt:
     context: Dict[str, Any]
 
 
+_OUTPUT_SCHEMA_INSTRUCTION = (
+    "Return strict JSON with keys: "
+    "summary (string), pros (array of exactly 2 strings), cons (array of exactly 2 strings), "
+    "best_for (string — one sentence describing who this card is best for, or empty string), "
+    "confidence (number 0-1), disclaimers (array of strings, optional)."
+)
+
+
 class PromptBuilder:
     """Build structured prompts from scoring + personalization context."""
 
     _SYSTEM_BY_TYPE = {
         ExplanationType.SINGLE_TRANSACTION: (
             "You are a financial assistant generating a single transaction "
-            "recommendation explanation. Return strict JSON with keys: "
-            "summary (string), rationale (array of strings), confidence (0-1), "
-            "disclaimers (array of strings, optional)."
+            "recommendation explanation. " + _OUTPUT_SCHEMA_INSTRUCTION
         ),
         ExplanationType.PORTFOLIO_OPTIMIZATION: (
             "You are a financial assistant generating a portfolio optimization "
-            "suggestion explanation. Return strict JSON with keys: summary, "
-            "rationale, confidence, disclaimers."
+            "suggestion explanation. " + _OUTPUT_SCHEMA_INSTRUCTION
         ),
         ExplanationType.NEW_CARD_RECOMMENDATION: (
             "You are a financial assistant generating a new card recommendation "
-            "explanation. Return strict JSON with keys: summary, rationale, "
-            "confidence, disclaimers."
+            "explanation. " + _OUTPUT_SCHEMA_INSTRUCTION
         ),
     }
 
@@ -76,13 +80,21 @@ class PromptBuilder:
         self._validate_required_fields(explanation_type, scoring_output)
         context = self.build_context(scoring_output, personalization_signals)
 
+        # Build enriched persona / fee / wallet context block
+        persona_block = self._build_persona_block(personalization_signals)
+
         user_message = (
             f"Generate a {explanation_type.value.replace('_', ' ')} using only this context.\n"
             f"Context JSON:\n{json.dumps(context, indent=2, sort_keys=True)}\n"
+            f"{persona_block}"
             "Rules:\n"
             "1. Do not invent rates, fees, or bonuses not present in context.\n"
             "2. Keep summary concise and actionable.\n"
-            "3. Mention key trade-offs when relevant."
+            "3. Mention key trade-offs when relevant.\n"
+            "4. Return exactly 2 pros and exactly 2 cons.\n"
+            "5. Pros should highlight specific, concrete benefits for this user.\n"
+            "6. Cons should mention genuine trade-offs (fees, limitations, opportunity costs).\n"
+            '7. Include a "best_for" line describing the ideal user profile for this card.\n'
         )
 
         return BuiltPrompt(
@@ -91,6 +103,30 @@ class PromptBuilder:
             user_message=user_message,
             context=context,
         )
+
+    def _build_persona_block(self, personalization_signals: Dict[str, Any]) -> str:
+        """Build a human-readable block of persona, fee, and wallet context."""
+        parts: list[str] = []
+
+        personas = personalization_signals.get("active_personas")
+        if personas:
+            parts.append(f"User personas: {', '.join(personas)}")
+
+        fee_sensitivity = personalization_signals.get("fee_sensitivity")
+        if fee_sensitivity:
+            parts.append(f"Fee sensitivity: {fee_sensitivity}")
+
+        saved_cards = personalization_signals.get("saved_cards")
+        if saved_cards:
+            parts.append(f"Cards already in wallet: {', '.join(saved_cards)}")
+
+        score_breakdown = personalization_signals.get("score_breakdown")
+        if score_breakdown:
+            parts.append(f"Score breakdown: {json.dumps(score_breakdown)}")
+
+        if not parts:
+            return ""
+        return "User context:\n" + "\n".join(f"- {p}" for p in parts) + "\n"
 
     def _validate_required_fields(
         self,

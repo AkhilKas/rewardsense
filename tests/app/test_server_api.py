@@ -60,7 +60,9 @@ class _FakeLLMClient:
     def generate(self, system_message: str, user_message: str, **kwargs) -> str:
         return (
             '{"summary":"Use Amex Gold for Sweetgreen.",'
-            '"rationale":["It earns 4x on dining","Highest expected return"],'
+            '"pros":["Earns 4x on dining purchases","Highest expected return for this merchant"],'
+            '"cons":["Annual fee may offset rewards for light spenders","No cashback option available"],'
+            '"best_for":"Frequent diners",'
             '"confidence":0.94}'
         )
 
@@ -69,7 +71,7 @@ def test_health_endpoint_ok():
     app = create_app(service=RewardSenseService(enable_llm_explanations=False))
     health_route = next(r for r in app.routes if getattr(r, "path", "") == "/health")
     response = health_route.endpoint()
-    assert response == {"status": "ok"}
+    assert response["status"] == "healthy"
 
 
 def test_recommend_endpoint_returns_scoring_and_explanation():

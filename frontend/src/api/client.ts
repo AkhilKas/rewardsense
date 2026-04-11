@@ -295,7 +295,16 @@ export async function getSummary(): Promise<SummaryResponse> {
 export async function submitFeedback(
   payload: FeedbackRequest,
 ): Promise<FeedbackResponse> {
-  return mockFeedback(payload);
+  if (USE_MOCK) return mockFeedback(payload);
+
+  const res = await fetch(`${API_BASE_URL}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<FeedbackResponse>;
 }
 
 export async function getBusinessMetrics(): Promise<BusinessMetricsResponse> {

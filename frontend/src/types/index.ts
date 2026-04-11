@@ -34,6 +34,9 @@ export interface RecommendedCard {
   score: number;
   rank: number;
   explanation: string;
+  pros?: string[];
+  cons?: string[];
+  best_for?: string;
   annual_fee: number;
   reward_rate: number;
   key_benefits: string[];
@@ -236,16 +239,23 @@ export interface SummaryResponse {
   top_insights: TopInsight[];
 }
 
+export type FeedbackReasonTag =
+  | "too_expensive"
+  | "not_relevant"
+  | "already_have"
+  | "explanation_unclear";
+
 export interface FeedbackRequest {
-  recommendation_event_id?: string;
-  card_id?: string;
+  recommendation_event_id?: number;
+  card_id: string;
   reaction: "like" | "dislike";
-  reason_tag?: string;
+  reason_tag?: FeedbackReasonTag;
+  target: "card" | "explanation";
 }
 
 export interface FeedbackResponse {
   ok: boolean;
-  feedback_id: string;
+  feedback_id: number;
 }
 
 export interface BusinessMetricsResponse {

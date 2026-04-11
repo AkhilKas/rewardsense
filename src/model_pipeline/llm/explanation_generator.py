@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import re
 import time
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol
 
 from src.model_pipeline.llm.prompt_builder import (
     ExplanationType,
@@ -27,13 +28,18 @@ class LLMClient(Protocol):
 
 @dataclass(frozen=True)
 class GeneratedExplanation(ParsedExplanation):
-    """Structured explanation with quality metadata."""
+    """Structured explanation with quality and telemetry metadata."""
 
     quality_checks: Dict[str, bool] = field(default_factory=dict)
     raw_response: str = ""
     used_fallback: bool = False
     fallback_reason: Optional[str] = None
     latency_ms: float = 0.0
+    # --- Telemetry fields (Story 4.3) ---
+    prompt_hash: str = ""
+    model_name: str = ""
+    temperature: float = 0.0
+    token_estimate: Optional[int] = None
 
 
 class ExplanationQualityFilter:
@@ -45,34 +51,38 @@ class ExplanationQualityFilter:
 
     def evaluate(
         self,
-        summary: str,
-        rationale: List[str],
+        parsed: ParsedExplanation,
         context: Dict[str, Any],
     ) -> Dict[str, bool]:
-        """Evaluate quality checks for length, relevance, and hallucination risk."""
-        length_ok = len(summary) + sum(len(r) for r in rationale) <= self.max_chars
+        """Evaluate quality checks for length, relevance, structure, and hallucination risk."""
+        total_len = len(parsed.summary) + sum(len(r) for r in parsed.rationale)
+        length_ok = total_len <= self.max_chars
 
         best_card_name = (
             (context.get("scoring") or {}).get("best_card", {}).get("card_name", "")
         )
-        relevance_ok = len(rationale) >= self.min_rationale_points
+        relevance_ok = len(parsed.rationale) >= self.min_rationale_points
         if best_card_name:
-            corpus = f"{summary} {' '.join(rationale)}".lower()
+            corpus = f"{parsed.summary} {' '.join(parsed.rationale)}".lower()
             relevance_ok = relevance_ok and best_card_name.lower() in corpus
 
-        hallucination_guard_ok = self._hallucination_guard(summary, rationale, context)
+        # v2 structure check: exactly 2 pros and 2 cons
+        pros_cons_ok = len(parsed.pros) == 2 and len(parsed.cons) == 2
+
+        hallucination_guard_ok = self._hallucination_guard(parsed, context)
 
         return {
             "length_ok": length_ok,
             "relevance_ok": relevance_ok,
+            "pros_cons_ok": pros_cons_ok,
             "hallucination_guard_ok": hallucination_guard_ok,
         }
 
     def _hallucination_guard(
-        self, summary: str, rationale: List[str], context: Dict[str, Any]
+        self, parsed: ParsedExplanation, context: Dict[str, Any]
     ) -> bool:
         """Flag obviously impossible reward multipliers against known context."""
-        text = f"{summary} {' '.join(rationale)}"
+        text = f"{parsed.summary} {' '.join(parsed.rationale)}"
         claimed_multipliers = [
             int(v) for v in re.findall(r"\b(\d{1,2})x\b", text.lower())
         ]
@@ -105,30 +115,65 @@ class TemplateFallbackGenerator:
         txn = scoring.get("transaction", {})
         best_card_name = best.get("card_name", "the recommended card")
         reward_rate = best.get("reward_rate")
+        annual_fee = best.get("annual_fee")
         merchant = txn.get("merchant", "this purchase")
         category = txn.get("category", "this category")
 
+        # Derive persona info from personalization context
+        personalization = context.get("personalization", {})
+        personas = personalization.get("active_personas", [])
+
         if explanation_type == ExplanationType.SINGLE_TRANSACTION:
             summary = f"Use {best_card_name} for {merchant}."
-            rationale = [
-                f"It is the top-ranked option for {category} in current scoring output.",
+            pros = [
+                f"Top-ranked option for {category} in current scoring output.",
+                (
+                    f"Provides up to {reward_rate}x rewards in this category."
+                    if reward_rate is not None
+                    else "Strong reward rate for this spending category."
+                ),
             ]
-            if reward_rate is not None:
-                rationale.append(
-                    f"It provides up to {reward_rate}x rewards in this context."
-                )
+            cons = [
+                (
+                    f"Annual fee of ${annual_fee} may offset rewards for low spenders."
+                    if annual_fee and annual_fee > 0
+                    else "Reward rates may vary by merchant within this category."
+                ),
+                "Other cards may offer better rates in different spending categories.",
+            ]
+            best_for = (
+                f"Frequent {category} spenders" if category != "this category" else ""
+            )
         elif explanation_type == ExplanationType.PORTFOLIO_OPTIMIZATION:
             summary = f"Prioritize {best_card_name} in your portfolio strategy."
-            rationale = [
-                "It appears as the strongest option in the current optimization context.",
-                "Rebalance spend toward top-ranked cards to improve expected value.",
+            pros = [
+                "Strongest option in the current portfolio optimization context.",
+                "Rebalancing spend toward this card improves expected reward value.",
             ]
+            cons = [
+                "Concentrating spend on one card may miss category-specific bonuses elsewhere.",
+                (
+                    f"Annual fee of ${annual_fee} requires sufficient spend to break even."
+                    if annual_fee and annual_fee > 0
+                    else "Reward structure may change with card issuer updates."
+                ),
+            ]
+            best_for = f"Users focused on {', '.join(personas)}" if personas else ""
         else:
             summary = f"{best_card_name} is the strongest next-card candidate."
-            rationale = [
+            pros = [
                 "Current scoring indicates better projected rewards versus alternatives.",
-                "Review annual fee and benefit fit against your spending profile.",
+                (
+                    f"Competitive reward rate of {reward_rate}x in key categories."
+                    if reward_rate is not None
+                    else "Well-rounded reward structure across spending categories."
+                ),
             ]
+            cons = [
+                "Review annual fee and benefit fit against your spending profile.",
+                "Adding a new card affects your credit profile temporarily.",
+            ]
+            best_for = f"Users focused on {', '.join(personas)}" if personas else ""
 
         disclaimers = ["Generated from deterministic fallback template."]
         if reason:
@@ -136,10 +181,18 @@ class TemplateFallbackGenerator:
 
         return ParsedExplanation(
             summary=summary,
-            rationale=rationale,
+            pros=pros,
+            cons=cons,
+            best_for=best_for,
             confidence=0.6,
             disclaimers=disclaimers,
         )
+
+
+def _compute_prompt_hash(system_message: str, user_message: str) -> str:
+    """SHA-256 hash of the prompt text for drift tracking."""
+    content = f"{system_message}\n---\n{user_message}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 class ExplanationGenerator:
@@ -154,6 +207,7 @@ class ExplanationGenerator:
         fallback_generator: Optional[TemplateFallbackGenerator] = None,
         enforce_quality: bool = True,
         model_name: str = "gemini-2.5-flash",
+        temperature: float = 0.0,
     ) -> None:
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder or PromptBuilder()
@@ -162,6 +216,7 @@ class ExplanationGenerator:
         self.fallback_generator = fallback_generator or TemplateFallbackGenerator()
         self.enforce_quality = enforce_quality
         self.model_name = model_name
+        self.temperature = temperature
 
     def generate(
         self,
@@ -178,9 +233,12 @@ class ExplanationGenerator:
             personalization_signals=personalization_signals,
         )
 
-        request_kwargs = {"model": self.model_name}
+        prompt_hash = _compute_prompt_hash(prompt.system_message, prompt.user_message)
+        effective_temp = self.temperature
+        request_kwargs: Dict[str, Any] = {"model": self.model_name}
         if llm_params:
             request_kwargs.update(llm_params)
+            effective_temp = llm_params.get("temperature", self.temperature)
 
         try:
             raw_response = self.llm_client.generate(
@@ -191,8 +249,7 @@ class ExplanationGenerator:
             parsed = self.parser.parse(raw_response)
 
             checks = self.quality_filter.evaluate(
-                summary=parsed.summary,
-                rationale=parsed.rationale,
+                parsed=parsed,
                 context=prompt.context,
             )
 
@@ -204,13 +261,14 @@ class ExplanationGenerator:
                     reason=reason,
                 )
                 fallback_checks = self.quality_filter.evaluate(
-                    summary=fallback.summary,
-                    rationale=fallback.rationale,
+                    parsed=fallback,
                     context=prompt.context,
                 )
                 return GeneratedExplanation(
                     summary=fallback.summary,
-                    rationale=fallback.rationale,
+                    pros=fallback.pros,
+                    cons=fallback.cons,
+                    best_for=fallback.best_for,
                     confidence=fallback.confidence,
                     disclaimers=fallback.disclaimers,
                     quality_checks=fallback_checks,
@@ -218,11 +276,16 @@ class ExplanationGenerator:
                     used_fallback=True,
                     fallback_reason=reason,
                     latency_ms=round((time.perf_counter() - start) * 1000, 3),
+                    prompt_hash=prompt_hash,
+                    model_name=self.model_name,
+                    temperature=effective_temp,
                 )
 
             return GeneratedExplanation(
                 summary=parsed.summary,
-                rationale=parsed.rationale,
+                pros=parsed.pros,
+                cons=parsed.cons,
+                best_for=parsed.best_for,
                 confidence=parsed.confidence,
                 disclaimers=parsed.disclaimers,
                 quality_checks=checks,
@@ -230,6 +293,9 @@ class ExplanationGenerator:
                 used_fallback=False,
                 fallback_reason=None,
                 latency_ms=round((time.perf_counter() - start) * 1000, 3),
+                prompt_hash=prompt_hash,
+                model_name=self.model_name,
+                temperature=effective_temp,
             )
         except (ResponseParseError, RuntimeError, ValueError) as exc:
             fallback = self.fallback_generator.generate(
@@ -238,13 +304,14 @@ class ExplanationGenerator:
                 reason=str(exc),
             )
             checks = self.quality_filter.evaluate(
-                summary=fallback.summary,
-                rationale=fallback.rationale,
+                parsed=fallback,
                 context=prompt.context,
             )
             return GeneratedExplanation(
                 summary=fallback.summary,
-                rationale=fallback.rationale,
+                pros=fallback.pros,
+                cons=fallback.cons,
+                best_for=fallback.best_for,
                 confidence=fallback.confidence,
                 disclaimers=fallback.disclaimers,
                 quality_checks=checks,
@@ -252,4 +319,7 @@ class ExplanationGenerator:
                 used_fallback=True,
                 fallback_reason=str(exc),
                 latency_ms=round((time.perf_counter() - start) * 1000, 3),
+                prompt_hash=prompt_hash,
+                model_name=self.model_name,
+                temperature=effective_temp,
             )

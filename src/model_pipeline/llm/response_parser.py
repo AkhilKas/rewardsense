@@ -14,12 +14,24 @@ class ResponseParseError(ValueError):
 
 @dataclass(frozen=True)
 class ParsedExplanation:
-    """Structured explanation extracted from raw LLM output."""
+    """Structured explanation extracted from raw LLM output.
+
+    The v2 contract requires exactly 2 pros, 2 cons, and an optional
+    ``best_for`` line.  ``rationale`` is kept for backward compatibility
+    and is derived from ``pros + cons`` when not provided directly.
+    """
 
     summary: str
-    rationale: List[str]
-    confidence: float
+    pros: List[str] = field(default_factory=list)
+    cons: List[str] = field(default_factory=list)
+    best_for: str = ""
+    confidence: float = 0.0
     disclaimers: List[str] = field(default_factory=list)
+
+    @property
+    def rationale(self) -> List[str]:
+        """Backward-compatible rationale derived from pros + cons."""
+        return list(self.pros) + list(self.cons)
 
 
 class ResponseParser:
@@ -62,24 +74,39 @@ class ResponseParser:
 
     def _validate(self, payload: Dict[str, Any]) -> ParsedExplanation:
         summary = payload.get("summary")
-        rationale = payload.get("rationale")
+        pros = payload.get("pros")
+        cons = payload.get("cons")
+        best_for = payload.get("best_for", "")
         confidence = payload.get("confidence")
         disclaimers = payload.get("disclaimers", [])
 
         if not isinstance(summary, str) or not summary.strip():
             raise ResponseParseError("Missing or invalid required field: summary")
 
-        if not isinstance(rationale, list) or not rationale:
-            raise ResponseParseError("Missing or invalid required field: rationale")
-        if not all(isinstance(item, str) and item.strip() for item in rationale):
-            raise ResponseParseError("Rationale must be a non-empty list of strings")
+        # --- Pros validation (exactly 2) ---
+        if not isinstance(pros, list) or len(pros) != 2:
+            raise ResponseParseError("Field 'pros' must be a list of exactly 2 strings")
+        if not all(isinstance(item, str) and item.strip() for item in pros):
+            raise ResponseParseError("Each pro must be a non-empty string")
 
+        # --- Cons validation (exactly 2) ---
+        if not isinstance(cons, list) or len(cons) != 2:
+            raise ResponseParseError("Field 'cons' must be a list of exactly 2 strings")
+        if not all(isinstance(item, str) and item.strip() for item in cons):
+            raise ResponseParseError("Each con must be a non-empty string")
+
+        # --- best_for (optional string) ---
+        if not isinstance(best_for, str):
+            raise ResponseParseError("Field 'best_for' must be a string")
+
+        # --- confidence ---
         if not isinstance(confidence, (int, float)):
             raise ResponseParseError("Missing or invalid required field: confidence")
         confidence = float(confidence)
         if confidence < 0.0 or confidence > 1.0:
             raise ResponseParseError("Confidence must be between 0 and 1")
 
+        # --- disclaimers ---
         if not isinstance(disclaimers, list) or not all(
             isinstance(item, str) for item in disclaimers
         ):
@@ -87,7 +114,9 @@ class ResponseParser:
 
         return ParsedExplanation(
             summary=summary.strip(),
-            rationale=[item.strip() for item in rationale],
+            pros=[item.strip() for item in pros],
+            cons=[item.strip() for item in cons],
+            best_for=best_for.strip(),
             confidence=confidence,
             disclaimers=disclaimers,
         )

@@ -9,7 +9,6 @@ import logging
 import math
 import os
 from pathlib import Path
-import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
@@ -55,14 +54,7 @@ KNOWN_SPENDING_CATEGORIES = {
 DEFAULT_MONTHLY_SPEND = 1000.0
 MAX_RECOMMENDATIONS = int(os.getenv("PREDICT_TOP_K", "10"))
 DEFAULT_DETERMINISTIC_WEIGHT = 0.6
-DEFAULT_CATALOG_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "processed"
-    / "current"
-    / "offers"
-    / "merged_cards.json"
-)
+# DEFAULT_CATALOG_PATH moved to src/app/cards/catalog.py
 
 # LLM explanation configuration (Story 2.4)
 ENABLE_LLM_EXPLANATIONS: bool = os.getenv(
@@ -93,154 +85,12 @@ LOCAL_PERFORMANCE_DIR: Path = Path(
 # Module-level LLM singleton (initialised lazily)
 _explanation_generator: Optional[ExplanationGenerator] = None  # type: ignore[type-arg]
 
-CURATED_CARD_CATALOG: List[Dict[str, Any]] = [
-    {
-        "card_id": "amex_gold",
-        "card_name": "Amex Gold Card",
-        "issuer": "American Express",
-        "annual_fee": 250.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"dining": 4.0, "groceries": 4.0},
-        },
-        "key_benefits": [
-            "4x on dining",
-            "4x on groceries",
-            "$120 dining credit",
-            "$120 Uber credit",
-        ],
-    },
-    {
-        "card_id": "chase_sapphire_preferred",
-        "card_name": "Chase Sapphire Preferred",
-        "issuer": "Chase",
-        "annual_fee": 95.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"travel": 3.0, "dining": 3.0},
-        },
-        "key_benefits": [
-            "3x on dining",
-            "2x on travel",
-            "$50 hotel credit",
-            "Trip cancellation insurance",
-        ],
-    },
-    {
-        "card_id": "capital_one_venture_x",
-        "card_name": "Capital One Venture X",
-        "issuer": "Capital One",
-        "annual_fee": 395.0,
-        "reward_rates": {
-            "universal_base_rate": 2.0,
-            "category_bonuses": {"travel": 5.0},
-        },
-        "key_benefits": [
-            "2x on everything",
-            "5x on travel",
-            "$300 travel credit",
-            "Airport lounge access",
-        ],
-    },
-    {
-        "card_id": "citi_double_cash",
-        "card_name": "Citi Double Cash",
-        "issuer": "Citi",
-        "annual_fee": 0.0,
-        "reward_rates": {"universal_base_rate": 2.0},
-        "key_benefits": [
-            "2% on everything",
-            "No annual fee",
-            "0% intro APR",
-            "Citi Entertainment access",
-        ],
-    },
-    {
-        "card_id": "blue_cash_preferred",
-        "card_name": "Blue Cash Preferred",
-        "issuer": "American Express",
-        "annual_fee": 95.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"groceries": 6.0, "streaming": 6.0, "gas": 3.0},
-        },
-        "key_benefits": [
-            "6% on groceries",
-            "6% on streaming",
-            "3% on gas",
-            "$0 intro annual fee first year",
-        ],
-    },
-    {
-        "card_id": "capital_one_savor",
-        "card_name": "Capital One Savor",
-        "issuer": "Capital One",
-        "annual_fee": 0.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"dining": 3.0, "entertainment": 3.0, "groceries": 3.0},
-        },
-        "key_benefits": [
-            "3% on dining",
-            "3% on entertainment",
-            "3% on groceries",
-            "No annual fee",
-        ],
-    },
-    {
-        "card_id": "chase_freedom_unlimited",
-        "card_name": "Chase Freedom Unlimited",
-        "issuer": "Chase",
-        "annual_fee": 0.0,
-        "reward_rates": {
-            "universal_base_rate": 1.5,
-            "category_bonuses": {"dining": 3.0, "travel": 2.0},
-        },
-        "key_benefits": [
-            "1.5% on everything",
-            "3% on dining",
-            "No annual fee",
-            "0% intro APR 15 months",
-        ],
-    },
-    {
-        "card_id": "wells_fargo_autograph",
-        "card_name": "Wells Fargo Autograph",
-        "issuer": "Wells Fargo",
-        "annual_fee": 0.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {
-                "dining": 3.0,
-                "travel": 3.0,
-                "gas": 3.0,
-                "streaming": 3.0,
-            },
-        },
-        "key_benefits": [
-            "3x on dining",
-            "3x on travel",
-            "3x on gas and streaming",
-            "No annual fee",
-        ],
-    },
-    {
-        "card_id": "discover_it_cash_back",
-        "card_name": "Discover it Cash Back",
-        "issuer": "Discover",
-        "annual_fee": 0.0,
-        "reward_rates": {
-            "universal_base_rate": 1.0,
-            "category_bonuses": {"gas": 5.0, "online_shopping": 5.0},
-        },
-        "key_benefits": [
-            "5% rotating categories",
-            "1% on everything else",
-            "Cashback Match first year",
-            "No annual fee",
-        ],
-    },
-]
+# Card catalog — loaded from shared module (pipeline + curated cards)
+from src.app.cards.catalog import (  # noqa: E402
+    CARD_CATALOG as _SHARED_CATALOG,
+    _slugify,
+)
+
 MCC_MAPPER = MerchantCategoryMapper()
 
 
@@ -268,98 +118,7 @@ def _parse_cors_origins() -> List[str]:
     return origins or ["http://localhost:5173", "http://localhost:3000"]
 
 
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
-    return slug or "unknown_card"
-
-
-def _parse_rate(raw: Any) -> Optional[float]:
-    if raw is None:
-        return None
-    if isinstance(raw, (int, float)):
-        value = float(raw)
-    else:
-        match = re.search(r"(\d+(?:\.\d+)?)", str(raw))
-        if not match:
-            return None
-        value = float(match.group(1))
-
-    if value < 0 or value > 10:
-        return None
-    return value
-
-
-def _load_catalog_from_offers(path: Path) -> List[Dict[str, Any]]:
-    if not path.exists():
-        return []
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.warning("Failed to read card catalog from %s: %s", path, exc)
-        return []
-
-    if not isinstance(data, list):
-        return []
-
-    cards_by_id: Dict[str, Dict[str, Any]] = {}
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-
-        raw_name = str(item.get("card_name") or item.get("name") or "").strip()
-        if not raw_name or raw_name.lower().startswith("best for:"):
-            continue
-
-        rate = _parse_rate(item.get("base_reward_rate"))
-        if rate is None:
-            continue
-
-        card_id = str(item.get("card_id") or _slugify(raw_name))
-        annual_fee = item.get("annual_fee", 0.0)
-        try:
-            annual_fee = float(annual_fee)
-        except (TypeError, ValueError):
-            annual_fee = 0.0
-
-        candidate = {
-            "card_id": card_id,
-            "card_name": raw_name,
-            "annual_fee": max(annual_fee, 0.0),
-            "reward_rates": {"universal_base_rate": rate},
-        }
-
-        existing = cards_by_id.get(card_id)
-        if existing is None:
-            cards_by_id[card_id] = candidate
-            continue
-
-        existing_rate = float(
-            existing.get("reward_rates", {}).get("universal_base_rate", 0.0)
-        )
-        if rate > existing_rate:
-            cards_by_id[card_id] = candidate
-
-    return list(cards_by_id.values())
-
-
-def _load_card_catalog() -> List[Dict[str, Any]]:
-    path = Path(os.getenv("CARD_CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
-    loaded_cards = _load_catalog_from_offers(path)
-
-    cards_by_id: Dict[str, Dict[str, Any]] = {
-        card["card_id"]: dict(card) for card in loaded_cards
-    }
-    for card in CURATED_CARD_CATALOG:
-        cards_by_id[card["card_id"]] = dict(card)
-
-    catalog = list(cards_by_id.values())
-    if not catalog:
-        return list(CURATED_CARD_CATALOG)
-    return catalog
-
-
-CARD_CATALOG = _load_card_catalog()
+CARD_CATALOG = _SHARED_CATALOG
 
 
 class StrictModel(BaseModel):

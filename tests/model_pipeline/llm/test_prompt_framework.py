@@ -54,9 +54,22 @@ class TestPromptBuilderTemplates:
         )
 
         assert "single transaction recommendation" in prompt.system_message.lower()
+        assert "pros" in prompt.system_message.lower()
+        assert "cons" in prompt.system_message.lower()
         assert "Chipotle" in prompt.user_message
         assert "Amex Gold" in prompt.user_message
-        assert "foodie_traveler" in prompt.user_message
+
+    def test_prompt_includes_pros_cons_instructions(
+        self, scoring_output, personalization_signals
+    ):
+        builder = PromptBuilder()
+        prompt = builder.build_prompt(
+            explanation_type=ExplanationType.SINGLE_TRANSACTION,
+            scoring_output=scoring_output,
+            personalization_signals=personalization_signals,
+        )
+        assert "exactly 2 pros" in prompt.user_message.lower()
+        assert "exactly 2 cons" in prompt.user_message.lower()
 
     def test_portfolio_optimization_template_renders(self):
         builder = PromptBuilder()
@@ -113,6 +126,33 @@ class TestPromptBuilderTemplates:
             )
 
 
+class TestPersonaBlock:
+    def test_persona_context_included_in_prompt(self, scoring_output):
+        builder = PromptBuilder()
+        signals = {
+            "active_personas": ["traveler", "student"],
+            "fee_sensitivity": "high",
+            "saved_cards": ["Citi Double Cash", "Discover it"],
+        }
+        prompt = builder.build_prompt(
+            explanation_type=ExplanationType.SINGLE_TRANSACTION,
+            scoring_output=scoring_output,
+            personalization_signals=signals,
+        )
+        assert "traveler" in prompt.user_message
+        assert "Fee sensitivity: high" in prompt.user_message
+        assert "Citi Double Cash" in prompt.user_message
+
+    def test_empty_persona_block_when_no_signals(self, scoring_output):
+        builder = PromptBuilder()
+        prompt = builder.build_prompt(
+            explanation_type=ExplanationType.SINGLE_TRANSACTION,
+            scoring_output=scoring_output,
+            personalization_signals={},
+        )
+        assert "User context:" not in prompt.user_message
+
+
 class TestContextInjection:
     def test_context_contains_scoring_and_personalization(
         self, scoring_output, personalization_signals
@@ -141,7 +181,9 @@ Here is the explanation.
 ```json
 {
   "summary": "Use Amex Gold for dining.",
-  "rationale": ["4x dining rewards", "user values transferable points"],
+  "pros": ["4x dining rewards", "User values transferable points"],
+  "cons": ["$250 annual fee", "Limited cashback options"],
+  "best_for": "Frequent diners",
   "confidence": 0.93,
   "disclaimers": ["Rates may change"]
 }
@@ -149,21 +191,29 @@ Here is the explanation.
 """
         parsed = parser.parse(raw)
         assert parsed.summary == "Use Amex Gold for dining."
-        assert parsed.rationale[0] == "4x dining rewards"
+        assert len(parsed.pros) == 2
+        assert parsed.pros[0] == "4x dining rewards"
+        assert len(parsed.cons) == 2
+        assert parsed.best_for == "Frequent diners"
         assert parsed.confidence == pytest.approx(0.93)
+        # backward compat
+        assert len(parsed.rationale) == 4
 
     def test_parse_plain_json(self):
         parser = ResponseParser()
         raw = json.dumps(
             {
                 "summary": "Pick Citi Double Cash.",
-                "rationale": ["No annual fee", "Strong baseline return"],
+                "pros": ["No annual fee", "Strong baseline return"],
+                "cons": ["No category bonuses", "No sign-up bonus"],
+                "best_for": "Everyday spenders",
                 "confidence": 0.88,
             }
         )
         parsed = parser.parse(raw)
         assert parsed.summary.startswith("Pick Citi")
-        assert len(parsed.rationale) == 2
+        assert len(parsed.pros) == 2
+        assert len(parsed.cons) == 2
 
     def test_invalid_json_raises(self):
         parser = ResponseParser()
@@ -174,3 +224,29 @@ Here is the explanation.
         parser = ResponseParser()
         with pytest.raises(ResponseParseError):
             parser.parse('{"summary": "x"}')
+
+    def test_wrong_pros_count_raises(self):
+        parser = ResponseParser()
+        raw = json.dumps(
+            {
+                "summary": "Pick card.",
+                "pros": ["only one"],
+                "cons": ["a", "b"],
+                "confidence": 0.8,
+            }
+        )
+        with pytest.raises(ResponseParseError, match="exactly 2"):
+            parser.parse(raw)
+
+    def test_wrong_cons_count_raises(self):
+        parser = ResponseParser()
+        raw = json.dumps(
+            {
+                "summary": "Pick card.",
+                "pros": ["a", "b"],
+                "cons": ["only one"],
+                "confidence": 0.8,
+            }
+        )
+        with pytest.raises(ResponseParseError, match="exactly 2"):
+            parser.parse(raw)

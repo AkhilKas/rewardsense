@@ -5,6 +5,9 @@ export interface RecommendationCardViewModel {
   score: number;
   rank: number;
   explanation: string;
+  pros: string[];
+  cons: string[];
+  bestFor: string;
   annualFee: number;
   rewardRate: number;
   keyBenefits: string[];

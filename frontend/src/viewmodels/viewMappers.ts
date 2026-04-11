@@ -40,6 +40,9 @@ export function mapPortfolioToPredictionResponse(params: {
         score: Math.round(((card.reward_amount - minReward) / rewardRange) * 100),
         rank: displayRank,
         explanation: `Recommended from the full card catalog using your profile and spending. Estimated reward for this scenario: $${card.reward_amount.toFixed(2)}.`,
+        pros: [],
+        cons: [],
+        best_for: "",
         annual_fee: card.annual_fee,
         reward_rate:
           totalSpend > 0
@@ -74,6 +77,9 @@ export function mapPredictionToRecommendationVM(
       score: card.score,
       rank: card.rank,
       explanation: card.explanation,
+      pros: card.pros ?? [],
+      cons: card.cons ?? [],
+      bestFor: card.best_for ?? "",
       annualFee: card.annual_fee,
       rewardRate: card.reward_rate,
       keyBenefits: card.key_benefits,
