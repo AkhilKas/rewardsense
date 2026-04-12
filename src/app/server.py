@@ -496,7 +496,6 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
 
     _static_dir = _Path(os.getenv("STATIC_DIR", "/app/static"))
     if _static_dir.is_dir():
-        from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
 
         @app.get("/{full_path:path}")
