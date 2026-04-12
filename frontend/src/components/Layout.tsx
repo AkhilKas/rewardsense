@@ -9,15 +9,15 @@ const publicNavLinks = [
 ];
 
 const primaryAuthNavLinks = [
-  { to: "/recommend", label: "Recommend" },
+  { to: "/recommend", label: "Card Finder" },
   { to: "/wallet", label: "Wallet" },
-  { to: "/quick-recommend", label: "Quick Recommend" },
+  { to: "/quick-recommend", label: "Quick Check" },
 ];
 
 const secondaryAuthNavLinks = [
   { to: "/transactions", label: "Transactions" },
   { to: "/summary", label: "Summary" },
-  { to: "/dashboard", label: "System Status" },
+  { to: "/dashboard", label: "Monitoring" },
   { to: "/profile", label: "Profile" },
 ];
 

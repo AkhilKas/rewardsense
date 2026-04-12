@@ -136,6 +136,7 @@ export default function WalletPage() {
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleCard(card.card_id)}
+                        onClick={(e) => e.stopPropagation()}
                         className="h-4 w-4 rounded border-border text-primary focus:ring-primary/50"
                       />
                     </div>

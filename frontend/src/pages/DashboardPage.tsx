@@ -365,7 +365,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-secondary">
-          System Status
+          Model Monitoring
         </h1>
         {lastRefresh && (
           <p className="text-xs text-slate-400 dark:text-slate-500">

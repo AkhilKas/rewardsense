@@ -33,5 +33,9 @@ export interface QuickCardViewModel {
 
 export interface QuickRecommendationViewModel {
   context: string;
+  categoryUsed: string;
+  estimatedReward: number;
+  moneySaved: number;
+  hasSavedCards: boolean;
   cards: QuickCardViewModel[];
 }

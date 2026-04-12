@@ -2,6 +2,7 @@ import type {
   CardCatalogItem,
   PersonaRecommendResponse,
   PredictionResponse,
+  QuickTransactionResponse,
 } from "../types";
 import type {
   QuickRecommendationViewModel,
@@ -102,11 +103,19 @@ export function mapPredictionToRecommendationVM(
 }
 
 export function mapQuickRecommendToVM(
-  response: PersonaRecommendResponse,
+  response: QuickTransactionResponse,
 ): QuickRecommendationViewModel {
+  const allCards = [
+    ...(response.top_card ? [response.top_card] : []),
+    ...response.alternatives,
+  ];
   return {
     context: response.persona_context,
-    cards: response.ranked.map((card, index) => ({
+    categoryUsed: response.category_used,
+    estimatedReward: response.estimated_reward,
+    moneySaved: response.money_saved,
+    hasSavedCards: response.has_saved_cards,
+    cards: allCards.map((card, index) => ({
       id: card.card_id ?? `${card.card_name}-${card.rank}-${index}`,
       name: card.card_name,
       rank: card.rank,

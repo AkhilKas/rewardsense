@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { getTransactions, exportTransactions } from "../api/client";
+import { getTransactions, exportTransactions, createTransaction } from "../api/client";
 import { getCardImage } from "../api/cardImages";
 import type { TransactionsResponse, TransactionLogEntry } from "../types";
 
@@ -51,6 +50,11 @@ export default function TransactionHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newMerchant, setNewMerchant] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newCategory, setNewCategory] = useState("other");
+  const [addLoading, setAddLoading] = useState(false);
 
   const fetchPage = useCallback(async (p: number) => {
     setLoading(true);
@@ -81,6 +85,34 @@ export default function TransactionHistoryPage() {
     }
   }
 
+  async function handleAddTransaction(e: React.FormEvent) {
+    e.preventDefault();
+    const numericAmount = Number(newAmount);
+    if (!newMerchant.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError("Enter a valid merchant and amount.");
+      return;
+    }
+    setAddLoading(true);
+    setError(null);
+    try {
+      await createTransaction({
+        merchant: newMerchant.trim(),
+        amount: numericAmount,
+        category: newCategory,
+        source_flow: "manual",
+      });
+      setNewMerchant("");
+      setNewAmount("");
+      setNewCategory("other");
+      setShowAddForm(false);
+      void fetchPage(1);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to log transaction.");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
@@ -97,25 +129,93 @@ export default function TransactionHistoryPage() {
               : "Your transaction ledger"}
           </p>
         </div>
-        {data && data.total > 0 && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleExport("csv")}
-              disabled={exporting}
-              className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-            >
-              {exporting ? "Exporting..." : "Export CSV"}
-            </button>
-            <button
-              onClick={() => handleExport("xlsx")}
-              disabled={exporting}
-              className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-            >
-              Export XLSX
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAddForm((v) => !v)}
+            className="px-3 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            Log Transaction
+          </button>
+          {data && data.total > 0 && (
+            <>
+              <button
+                onClick={() => handleExport("csv")}
+                disabled={exporting}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+              >
+                {exporting ? "Exporting..." : "Export CSV"}
+              </button>
+              <button
+                onClick={() => handleExport("xlsx")}
+                disabled={exporting}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+              >
+                Export XLSX
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Add transaction form */}
+      {showAddForm && (
+        <div className="rounded-xl bg-card border border-border p-4">
+          <form onSubmit={handleAddTransaction} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Merchant</label>
+              <input
+                type="text"
+                value={newMerchant}
+                onChange={(e) => setNewMerchant(e.target.value)}
+                placeholder="e.g., Whole Foods"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Amount</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Category</label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+              >
+                {Object.keys(CATEGORY_COLORS).map((cat) => (
+                  <option key={cat} value={cat}>{cat.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={addLoading}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {addLoading ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -145,12 +245,12 @@ export default function TransactionHistoryPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
             Start logging transactions to track your spending and see which cards earn you the most rewards.
           </p>
-          <Link
-            to="/quick-recommend"
-            className="inline-flex items-center px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
           >
-            Make a recommendation
-          </Link>
+            Log your first transaction
+          </button>
         </div>
       )}
 

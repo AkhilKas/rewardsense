@@ -12,6 +12,8 @@ import type {
   PortfolioRecommendRequest,
   TransactionRecommendRequest,
   PersonaRecommendResponse,
+  QuickTransactionRequest,
+  QuickTransactionResponse,
   TransactionsResponse,
   TransactionCreateRequest,
   TransactionLogEntry,
@@ -30,6 +32,7 @@ import {
   mockCardsCatalog,
   mockRecommendPortfolio,
   mockRecommendTransaction,
+  mockRecommendQuickTransaction,
   mockTransactions,
   mockSummary,
   mockFeedback,
@@ -230,6 +233,20 @@ export async function recommendTransaction(
   handleUnauthorized(res.status);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json() as Promise<PersonaRecommendResponse>;
+}
+
+export async function recommendQuickTransaction(
+  payload: QuickTransactionRequest,
+): Promise<QuickTransactionResponse> {
+  if (USE_MOCK) return mockRecommendQuickTransaction(payload);
+  const res = await fetch(`${API_BASE_URL}/recommendations/quick-transaction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<QuickTransactionResponse>;
 }
 
 export async function getTransactions(

@@ -158,7 +158,7 @@ export default function RecommendPage() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-secondary">
-          Get Your Personalized Recommendations
+          Find Your Best Cards
         </h1>
         <p className="mt-2 text-slate-600 dark:text-slate-400">
           Tell us about your spending and we'll find the best credit cards for

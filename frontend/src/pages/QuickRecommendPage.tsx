@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { recommendTransaction } from "../api/client";
+import { recommendQuickTransaction } from "../api/client";
 import type { QuickRecommendationViewModel } from "../types/viewmodels";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -38,7 +38,7 @@ export default function QuickRecommendPage() {
 
     setLoading(true);
     try {
-      const response = await recommendTransaction({
+      const response = await recommendQuickTransaction({
         merchant: merchant.trim(),
         amount: numericAmount,
         category: category || undefined,
@@ -56,7 +56,7 @@ export default function QuickRecommendPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-secondary">Quick Recommendation</h1>
+        <h1 className="text-3xl font-bold text-secondary">Quick Check</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Enter one transaction to see which card in your wallet is the best fit.
         </p>
@@ -123,13 +123,33 @@ export default function QuickRecommendPage() {
         </Card>
       )}
 
-      {result && (
+      {result && !result.hasSavedCards && (
+        <Card>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Add cards to your{" "}
+            <a href="/wallet" className="text-primary hover:underline font-medium">wallet</a>{" "}
+            to get personalized recommendations.
+          </p>
+        </Card>
+      )}
+
+      {result && result.hasSavedCards && (
         <Card>
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-secondary">Best Card for This Purchase</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-lg font-semibold text-secondary">Best Card for This Purchase</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 capitalize">
+                {result.categoryUsed.replace(/_/g, " ")}
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               {result.context}
             </p>
+            {result.moneySaved > 0 && (
+              <p className="text-sm font-medium text-accent mt-1">
+                Est. reward: ${result.moneySaved.toFixed(2)}
+              </p>
+            )}
           </div>
 
           <div className="space-y-3">

@@ -381,6 +381,28 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
             "model_version": os.getenv("MODEL_VERSION", "unknown"),
         }
 
+    @app.get("/monitoring")
+    def monitoring() -> Dict[str, Any]:
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        return {
+            "model_version": os.getenv("MODEL_VERSION", "unknown"),
+            "last_deployment_time": os.getenv("MODEL_DEPLOYED_AT", now),
+            "drift_check": {
+                "detected": False,
+                "timestamp": now,
+                "feature_drift": {},
+            },
+            "serving_metrics": {
+                "request_count": 0,
+                "avg_latency_ms": 0,
+                "error_rate": 0.0,
+                "p95_latency_ms": 0,
+            },
+            "retrain_history": [],
+        }
+
     @app.post("/predict", response_model=PredictResponse)
     def predict(payload: PredictRequest) -> PredictResponse:
         # Build a single transaction from history or dominant spending category

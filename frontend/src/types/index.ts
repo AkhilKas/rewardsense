@@ -307,3 +307,22 @@ export interface TransactionCreateRequest {
   recommendation_event_id?: number;
   timestamp?: string;
 }
+
+export interface QuickTransactionRequest {
+  merchant: string;
+  amount: number;
+  category?: string;
+  date?: string;
+}
+
+export interface QuickTransactionResponse {
+  top_card: ScoredCard | null;
+  alternatives: ScoredCard[];
+  estimated_reward: number;
+  money_saved: number;
+  category_used: string;
+  is_personalized: boolean;
+  has_saved_cards: boolean;
+  active_personas: string[];
+  persona_context: string;
+}

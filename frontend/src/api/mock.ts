@@ -7,6 +7,8 @@ import type {
   PersonaRecommendResponse,
   PortfolioRecommendRequest,
   TransactionRecommendRequest,
+  QuickTransactionRequest,
+  QuickTransactionResponse,
   TransactionsResponse,
   TransactionsExportResponse,
   SummaryResponse,
@@ -254,6 +256,44 @@ export async function mockRecommendTransaction(
     best_card_id: "amex_gold",
     is_personalized: true,
     is_generic: false,
+    active_personas: ["cashback-focused"],
+    persona_context: "Cashback-focused profile favors high flat-value returns.",
+  };
+}
+
+export async function mockRecommendQuickTransaction(
+  request: QuickTransactionRequest,
+): Promise<QuickTransactionResponse> {
+  await delay(400);
+  return {
+    top_card: {
+      card_id: "amex_gold",
+      card_name: "Amex Gold Card",
+      reward_amount: request.amount * 0.04,
+      annual_fee: 250,
+      rank: 1,
+    },
+    alternatives: [
+      {
+        card_id: "chase_sapphire_preferred",
+        card_name: "Chase Sapphire Preferred",
+        reward_amount: request.amount * 0.03,
+        annual_fee: 95,
+        rank: 2,
+      },
+      {
+        card_id: "citi_double_cash",
+        card_name: "Citi Double Cash",
+        reward_amount: request.amount * 0.02,
+        annual_fee: 0,
+        rank: 3,
+      },
+    ],
+    estimated_reward: request.amount * 0.04,
+    money_saved: request.amount * 0.04,
+    category_used: request.category || "dining",
+    is_personalized: true,
+    has_saved_cards: true,
     active_personas: ["cashback-focused"],
     persona_context: "Cashback-focused profile favors high flat-value returns.",
   };
