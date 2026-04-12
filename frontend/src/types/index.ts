@@ -152,13 +152,38 @@ export interface CardListRequest {
   card_ids: string[];
 }
 
+export interface ScoredCardScoreBreakdown {
+  raw_reward_rate: number;
+  raw_reward_amount: number;
+  personalization_multiplier: number;
+  persona_category_boost: number;
+  persona_fee_penalty: number;
+}
+
+export interface ScoredCardDisplay {
+  card_id: string;
+  card_name: string;
+  issuer: string;
+  annual_fee: number;
+  reward_highlights: string[];
+  image_url?: string | null;
+}
+
 export interface ScoredCard {
   card_id?: string;
   card_name: string;
   reward_amount: number;
   annual_fee: number;
   rank: number;
+  explanation?: string;
+  pros?: string[];
+  cons?: string[];
+  best_for?: string;
   persona_adjustments?: Record<string, unknown>;
+  score_breakdown?: ScoredCardScoreBreakdown;
+  persona_match_reason?: string;
+  projected_savings?: number;
+  card_display?: ScoredCardDisplay;
 }
 
 export interface PortfolioRecommendRequest {

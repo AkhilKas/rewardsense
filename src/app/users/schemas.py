@@ -83,6 +83,10 @@ class ScoredCard(BaseModel):
     reward_amount: float
     annual_fee: float = 0.0
     rank: int
+    explanation: str = ""
+    pros: List[str] = []
+    cons: List[str] = []
+    best_for: str = ""
     persona_adjustments: Optional[Dict[str, float]] = None
     score_breakdown: Optional[ScoreBreakdown] = None
     persona_match_reason: Optional[str] = None

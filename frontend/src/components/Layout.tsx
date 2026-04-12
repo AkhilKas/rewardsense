@@ -56,8 +56,19 @@ export default function Layout() {
     <div className="min-h-screen flex flex-col bg-surface font-sans transition-colors duration-200">
       <header className="sticky top-0 z-50 bg-card border-b border-border transition-colors duration-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/" className="text-xl font-bold text-primary shrink-0">
-            RewardSense
+          <Link to="/" className="shrink-0 -ml-10">
+            <img
+              src="/logo-light.png"
+              alt="RewardSense"
+              className="block dark:hidden"
+              style={{ height: "175px" }}
+            />
+            <img
+              src="/logo-dark.png"
+              alt="RewardSense"
+              className="hidden dark:block"
+              style={{ height: "175px" }}
+            />
           </Link>
 
           {/* Desktop nav */}

@@ -33,27 +33,37 @@ export function mapPortfolioToPredictionResponse(params: {
     recommended_cards: cardsToDisplay.map((card, index) => {
       const meta = card.card_id ? catalogById.get(card.card_id) : undefined;
       const displayRank = index + 1;
+      // Use backend-generated explanation/pros/cons when available
+      const issuer =
+        card.card_display?.issuer ?? meta?.issuer ?? "Unknown issuer";
+      const highlights =
+        card.card_display?.reward_highlights ??
+        meta?.reward_highlights ??
+        [];
+      const savingsStr = card.projected_savings
+        ? `$${card.projected_savings.toLocaleString()}`
+        : `$${card.reward_amount.toFixed(2)}`;
+      const fallbackExplanation = `${card.card_name} — projected annual reward: ${savingsStr}.`;
+
       return {
         card_name: card.card_name,
-        issuer: meta?.issuer ?? "Unknown issuer",
-        // Display score is normalized to 0-100 even when net reward is negative.
+        issuer,
         score: Math.round(((card.reward_amount - minReward) / rewardRange) * 100),
         rank: displayRank,
-        explanation: `Recommended from the full card catalog using your profile and spending. Estimated reward for this scenario: $${card.reward_amount.toFixed(2)}.`,
-        pros: [],
-        cons: [],
-        best_for: "",
+        explanation: card.explanation || fallbackExplanation,
+        pros: card.pros ?? [],
+        cons: card.cons ?? [],
+        best_for: card.best_for ?? "",
         annual_fee: card.annual_fee,
         reward_rate:
           totalSpend > 0
             ? Number(((card.reward_amount / totalSpend) * 100).toFixed(2))
             : 0,
         key_benefits:
-          meta?.reward_highlights?.length
-            ? meta.reward_highlights
+          highlights.length > 0
+            ? highlights
             : ["Strong fit for your selected spending profile"],
         score_breakdown: {
-          // UI breakdown should not show large negative numbers.
           deterministic: Number(Math.max(0, card.reward_amount).toFixed(2)),
           personalization: 0,
         },

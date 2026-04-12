@@ -219,12 +219,126 @@ def _resolve_category_heuristic_first(merchant: str, hint: Optional[str]) -> str
     return "other"
 
 
+def _build_card_explanation(
+    card_name: str,
+    rank: int,
+    reward_rate: float,
+    annual_fee: float,
+    projected_savings: float,
+    category: str,
+    active_personas: List[str],
+    category_boost: float,
+    card_display: Optional[CardDisplayInfo],
+    spending_categories: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Generate card-specific explanation, pros, cons, and best_for."""
+    # --- Determine the card's top bonus category from display highlights ---
+    highlights = card_display.reward_highlights if card_display else []
+    has_category_bonuses = any(
+        "x " in h.lower() or "%" in h
+        for h in highlights
+        if "everything" not in h.lower()
+    )
+
+    # --- Explanation ---
+    rate_str = f"{reward_rate:g}x" if reward_rate >= 1 else f"{reward_rate:g}%"
+    savings_str = (
+        f"${projected_savings:,.0f}"
+        if projected_savings >= 1
+        else f"${projected_savings:.2f}"
+    )
+
+    if rank == 1:
+        explanation = (
+            f"Top pick for your spending profile. "
+            f"{card_name} earns {rate_str} on {category}, "
+            f"projecting {savings_str}/year in rewards."
+        )
+    else:
+        explanation = (
+            f"{card_name} earns {rate_str} on {category}. "
+            f"Projected annual reward: {savings_str}."
+        )
+
+    if category_boost > 1.0 and active_personas:
+        explanation += f" Boosted by your {', '.join(active_personas)} profile."
+
+    # --- Pros (exactly 2) ---
+    if has_category_bonuses:
+        # Find the best highlight to feature
+        top_highlight = highlights[0] if highlights else f"{rate_str} on {category}"
+        pro1 = f"{top_highlight} — strong for your spending pattern"
+    else:
+        pro1 = f"Flat {rate_str} on all purchases — no category tracking needed"
+
+    if annual_fee == 0:
+        pro2 = "No annual fee keeps your net rewards positive from day one"
+    elif projected_savings > annual_fee:
+        pro2 = (
+            f"Projected {savings_str}/year in rewards "
+            f"more than offsets the ${annual_fee:,.0f} annual fee"
+        )
+    else:
+        pro2 = (
+            f"Projected annual reward of {savings_str} across your spending categories"
+        )
+
+    # --- Cons (exactly 2) ---
+    if annual_fee > 0:
+        con1 = (
+            f"${annual_fee:,.0f}/year annual fee requires consistent spending to offset"
+        )
+    else:
+        if has_category_bonuses:
+            con1 = "Lower base rate on purchases outside bonus categories"
+        else:
+            con1 = "No bonus categories — specialized cards may earn more in your top areas"
+
+    # Find a category the user spends in where this card has no bonus
+    if spending_categories and has_category_bonuses:
+        # Use the card's highlights to identify gaps
+        highlight_text = " ".join(highlights).lower()
+        missing_cats = [
+            cat
+            for cat, amt in sorted(spending_categories.items(), key=lambda x: -x[1])
+            if cat not in highlight_text and amt > 0
+        ]
+        if missing_cats:
+            con2 = f"No bonus rate for {missing_cats[0]} — your {'#2' if len(missing_cats) > 1 else ''} spending category"
+        else:
+            con2 = "Rewards value depends on how you redeem points"
+    else:
+        con2 = "Other cards may offer higher rates in specific spending categories"
+
+    # --- Best for ---
+    if active_personas:
+        persona_label = ", ".join(active_personas)
+        if has_category_bonuses and highlights:
+            best_for = f"{persona_label.title()} spenders focused on {category}"
+        else:
+            best_for = (
+                f"{persona_label.title()} spenders looking for simple flat-rate rewards"
+            )
+    elif has_category_bonuses:
+        best_for = f"Spenders with high {category} purchases"
+    else:
+        best_for = "Everyday spenders who prefer simplicity over category optimization"
+
+    return {
+        "explanation": explanation,
+        "pros": [pro1, pro2],
+        "cons": [con1, con2],
+        "best_for": best_for,
+    }
+
+
 def _run_recommendation(
     portfolio: List[Dict[str, Any]],
     transaction: Dict[str, Any],
     active_personas: List[str],
     is_generic: bool,
     monthly_spend: float = 0.0,
+    spending_categories: Optional[Dict[str, float]] = None,
 ) -> PersonaRecommendResponse:
     """Score portfolio, apply persona modifier, return enriched response."""
     try:
@@ -275,18 +389,38 @@ def _run_recommendation(
         )
 
         cid = c.get("card_id")
+        display = _card_display_for(cid)
+        card_annual_fee = float(c.get("annual_fee", 0.0))
+
+        expl = _build_card_explanation(
+            card_name=c.get("card_name", ""),
+            rank=int(c.get("rank", 0)),
+            reward_rate=reward_rate,
+            annual_fee=card_annual_fee,
+            projected_savings=projected_savings,
+            category=category,
+            active_personas=active_personas,
+            category_boost=float(adj.get("category_boost_applied", 1.0)),
+            card_display=display,
+            spending_categories=spending_categories,
+        )
+
         scored_cards.append(
             ScoredCard(
                 card_id=cid,
                 card_name=c.get("card_name", ""),
                 reward_amount=float(c.get("reward_amount", 0.0)),
-                annual_fee=float(c.get("annual_fee", 0.0)),
+                annual_fee=card_annual_fee,
                 rank=int(c.get("rank", 0)),
+                explanation=expl["explanation"],
+                pros=expl["pros"],
+                cons=expl["cons"],
+                best_for=expl["best_for"],
                 persona_adjustments=c.get("persona_adjustments"),
                 score_breakdown=breakdown,
                 persona_match_reason=reason,
                 projected_savings=projected_savings,
-                card_display=_card_display_for(cid),
+                card_display=display,
             )
         )
 
@@ -348,6 +482,7 @@ def recommend_portfolio(
         active_personas=profile.personas,
         is_generic=is_generic,
         monthly_spend=monthly_spend,
+        spending_categories=categories or None,
     )
 
 
