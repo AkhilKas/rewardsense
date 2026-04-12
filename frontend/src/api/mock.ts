@@ -304,28 +304,29 @@ export async function mockTransactions(
   pageSize = 10,
 ): Promise<TransactionsResponse> {
   await delay(300);
-  const items: TransactionsResponse["items"] = Array.from({ length: pageSize }).map(
-    (_, i) => {
+  const entries = Array.from({ length: pageSize }).map((_, i) => {
     const idx = (page - 1) * pageSize + i + 1;
     return {
-      id: `tx_${idx}`,
+      id: idx,
       merchant: ["Whole Foods", "Uber", "Starbucks"][idx % 3],
       category: ["groceries", "travel", "dining"][idx % 3],
       amount: 25 + idx * 3,
-      card_id: ["amex_gold", "chase_sapphire_preferred", "citi_double_cash"][idx % 3],
+      chosen_card_id: ["amex_gold", "chase_sapphire_preferred", "citi_double_cash"][idx % 3],
+      chosen_card_name: ["Amex Gold Card", "Chase Sapphire Preferred", "Citi Double Cash"][idx % 3],
       reward_earned: Number((1.2 + idx * 0.15).toFixed(2)),
       estimated_savings: Number((0.7 + idx * 0.1).toFixed(2)),
-      baseline_savings: Number((0.5 + idx * 0.05).toFixed(2)),
-      timestamp: new Date(Date.now() - idx * 3600000).toISOString(),
       source_flow: idx % 2 ? "quick_transaction" : "portfolio_recommendation",
+      card_was_saved: true,
+      recommendation_event_id: null,
+      timestamp: new Date(Date.now() - idx * 3600000).toISOString(),
     };
   });
   return {
-    items,
+    transactions: entries,
+    total: 84,
     page,
     page_size: pageSize,
-    total_items: 84,
-    total_pages: Math.ceil(84 / pageSize),
+    has_next: page * pageSize < 84,
   };
 }
 
@@ -343,25 +344,29 @@ export async function mockSummary(): Promise<SummaryResponse> {
   await delay(350);
   return {
     spend_by_category: [
-      { category: "dining", amount: 980 },
-      { category: "travel", amount: 760 },
-      { category: "groceries", amount: 640 },
+      { category: "dining", total_spend: 980, total_reward: 39.2, total_savings: 15.0, transaction_count: 24 },
+      { category: "travel", total_spend: 760, total_reward: 22.8, total_savings: 11.0, transaction_count: 12 },
+      { category: "groceries", total_spend: 640, total_reward: 25.6, total_savings: 9.0, transaction_count: 30 },
     ],
     rewards_by_category: [
-      { category: "dining", reward_earned: 39.2 },
-      { category: "travel", reward_earned: 22.8 },
-      { category: "groceries", reward_earned: 25.6 },
+      { category: "dining", total_spend: 980, total_reward: 39.2, total_savings: 15.0, transaction_count: 24 },
+      { category: "travel", total_spend: 760, total_reward: 22.8, total_savings: 11.0, transaction_count: 12 },
+      { category: "groceries", total_spend: 640, total_reward: 25.6, total_savings: 9.0, transaction_count: 30 },
     ],
     savings_by_card: [
-      { card_id: "amex_gold", card_name: "Amex Gold Card", savings: 52.1 },
-      {
-        card_id: "chase_sapphire_preferred",
-        card_name: "Chase Sapphire Preferred",
-        savings: 41.4,
-      },
-      { card_id: "citi_double_cash", card_name: "Citi Double Cash", savings: 28.2 },
+      { card_id: "amex_gold", card_name: "Amex Gold Card", total_spend: 1200, total_reward: 52.1, total_savings: 52.1, transaction_count: 20 },
+      { card_id: "chase_sapphire_preferred", card_name: "Chase Sapphire Preferred", total_spend: 900, total_reward: 41.4, total_savings: 41.4, transaction_count: 15 },
+      { card_id: "citi_double_cash", card_name: "Citi Double Cash", total_spend: 600, total_reward: 28.2, total_savings: 28.2, transaction_count: 10 },
     ],
-    fee_adjusted_savings_total: 104.3,
+    total_spend: 2380,
+    total_rewards: 87.6,
+    total_savings: 121.7,
+    fee_adjusted_savings: 104.3,
+    transaction_count: 66,
+    top_insights: [
+      { label: "Best category", value: "Dining - $39.20 earned" },
+      { label: "Top card", value: "Amex Gold Card - $52.10 saved" },
+    ],
   };
 }
 
@@ -371,7 +376,7 @@ export async function mockFeedback(
   await delay(220);
   return {
     ok: true,
-    feedback_id: `fb_${Date.now()}`,
+    feedback_id: Date.now(),
   };
 }
 

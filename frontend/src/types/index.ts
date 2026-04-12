@@ -283,6 +283,11 @@ export interface FeedbackResponse {
   feedback_id: number;
 }
 
+export interface TransactionsExportResponse {
+  format: string;
+  download_url: string;
+}
+
 export interface BusinessMetricsResponse {
   generated_at: string;
   report_url_html: string;

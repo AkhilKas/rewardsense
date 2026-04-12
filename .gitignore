@@ -109,6 +109,9 @@ gx/plugins/
 !gx/expectations/*.json
 !gx/checkpoints/*.json
 !tests/model_pipeline/fixtures/*.json
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
 *-key.json
 service-account*.json
 

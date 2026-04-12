@@ -358,12 +358,29 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
         init_db()
         yield
 
+    import json as _json
+
     from fastapi.middleware.cors import CORSMiddleware
+
+    _raw_origins = os.getenv("CORS_ORIGINS")
+    if _raw_origins:
+        try:
+            _origins = _json.loads(_raw_origins)
+            if not isinstance(_origins, list):
+                _origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+        except _json.JSONDecodeError:
+            _origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    else:
+        _origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+        ]
 
     app = FastAPI(title="RewardSense API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -469,6 +486,25 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
             raise HTTPException(
                 status_code=500, detail=f"Recommendation failed: {exc}"
             ) from exc
+
+    # ------------------------------------------------------------------
+    # Static frontend serving (SPA fallback)
+    # Serves the Vite-built frontend from /app/static if it exists.
+    # All non-API paths fall through to index.html for client-side routing.
+    # ------------------------------------------------------------------
+    from pathlib import Path as _Path
+
+    _static_dir = _Path(os.getenv("STATIC_DIR", "/app/static"))
+    if _static_dir.is_dir():
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str) -> FileResponse:
+            file_path = _static_dir / full_path
+            if file_path.is_file():
+                return FileResponse(file_path)
+            return FileResponse(_static_dir / "index.html")
 
     return app
 

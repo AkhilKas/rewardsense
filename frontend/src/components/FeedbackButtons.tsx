@@ -16,9 +16,9 @@ interface FeedbackButtonsProps {
 }
 
 export default function FeedbackButtons({
-  cardId,
-  recommendationEventId,
-  target,
+  cardId: _cardId,
+  recommendationEventId: _recommendationEventId,
+  target: _target,
   onSubmit,
 }: FeedbackButtonsProps) {
   const [submitted, setSubmitted] = useState(false);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getTransactions, exportTransactions, createTransaction } from "../api/client";
 import { getCardImage } from "../api/cardImages";
-import type { TransactionsResponse, TransactionLogEntry } from "../types";
+import type { TransactionsResponse } from "../types";
 
 const PAGE_SIZE = 10;
 

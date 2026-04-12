@@ -1,8 +1,7 @@
 # ==============================================
 # RewardSense Inference Service
 # ==============================================
-# Serves the FastAPI recommendation + LLM
-# explanation endpoint via uvicorn.
+# Serves the FastAPI API + React frontend.
 #
 # Build:
 #   docker build -f Dockerfile.serving -t rewardsense-serving .
@@ -14,6 +13,17 @@
 #     rewardsense-serving
 # ==============================================
 
+# ===================== Stage 1: Build frontend =====================
+FROM node:20-slim AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+COPY frontend/ ./
+# VITE_API_URL is empty so the frontend uses same-origin requests in production
+RUN VITE_API_URL="" npm run build
+
+# ===================== Stage 2: Python serving =====================
 FROM python:3.11-slim
 
 # ---- System dependencies ----
@@ -45,6 +55,9 @@ COPY README.md ./README.md
 COPY src/ ./src/
 COPY config/ ./config/
 
+# ---- Copy built frontend into /app/static ----
+COPY --from=frontend-build /frontend/dist ./static
+
 # ---- Install project package ----
 RUN pip install --no-cache-dir -e .
 
@@ -70,9 +83,15 @@ ENV GCP_PROJECT_ID=rewardsense
 ENV VERTEX_LOCATION=us-central1
 ENV LLM_MODEL=gemini-2.5-flash
 
+# Frontend static directory
+ENV STATIC_DIR=/app/static
+
 # Python settings
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
+
+# Uvicorn workers — override in production (e.g., 2-4 for Cloud Run)
+ENV UVICORN_WORKERS=2
 
 # ---- Expose HTTP port ----
 EXPOSE 8080
@@ -82,11 +101,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl --fail http://localhost:8080/health || exit 1
 
 # ---- Entrypoint ----
-# `--factory` tells uvicorn to call create_app() on each worker start.
-# Workers default to 1; override via UVICORN_WORKERS env var in production.
-CMD ["uvicorn", "app.server:create_app", \
-     "--factory", \
-     "--host", "0.0.0.0", \
-     "--port", "8080", \
-     "--workers", "1", \
-     "--log-level", "info"]
+# Shell form so $UVICORN_WORKERS is expanded at runtime.
+CMD uvicorn app.server:create_app \
+    --factory \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --workers ${UVICORN_WORKERS} \
+    --log-level info
