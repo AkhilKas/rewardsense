@@ -451,12 +451,27 @@ def recommend_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PersonaRecommendResponse:
-    """Recommend using the user's saved wallet and active personas."""
-    profile = service.get_profile(db, current_user)
+    """Recommend using the user's saved wallet and active personas.
 
-    # Build portfolio — fall back to full catalog if wallet is empty
-    is_generic = len(profile.saved_card_ids) == 0
-    card_ids = [c.card_id for c in _CATALOG] if is_generic else profile.saved_card_ids
+    When ``use_full_catalog`` is true (card-finder mode), the full catalog
+    is scored and cards already in the wallet are excluded so that only
+    *new* card suggestions are returned.
+    """
+    profile = service.get_profile(db, current_user)
+    saved_ids = set(profile.saved_card_ids)
+
+    if payload.use_full_catalog or len(saved_ids) == 0:
+        # Card-finder mode: score full catalog, exclude wallet cards
+        all_ids = [c.card_id for c in _CATALOG]
+        card_ids = (
+            [cid for cid in all_ids if cid not in saved_ids] if saved_ids else all_ids
+        )
+        is_generic = len(saved_ids) == 0
+    else:
+        # Wallet mode: score only saved cards
+        card_ids = list(saved_ids)
+        is_generic = False
+
     portfolio = _build_portfolio(card_ids)
 
     # Derive transaction from dominant spending category

@@ -17,7 +17,6 @@ const primaryAuthNavLinks = [
 const secondaryAuthNavLinks = [
   { to: "/transactions", label: "Transactions" },
   { to: "/summary", label: "Summary" },
-  { to: "/dashboard", label: "Monitoring" },
   { to: "/profile", label: "Profile" },
 ];
 

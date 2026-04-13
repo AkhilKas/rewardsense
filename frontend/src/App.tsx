@@ -7,7 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import RecommendPage from "./pages/RecommendPage";
 import ResultsPage from "./pages/ResultsPage";
-import DashboardPage from "./pages/DashboardPage";
+
 import ProfilePage from "./pages/ProfilePage";
 import WalletPage from "./pages/WalletPage";
 import QuickRecommendPage from "./pages/QuickRecommendPage";
@@ -32,7 +32,7 @@ export default function App() {
             <Route element={<PrivateRoute />}>
               <Route path="recommend" element={<RecommendPage />} />
               <Route path="results" element={<ResultsPage />} />
-              <Route path="dashboard" element={<DashboardPage />} />
+
               <Route path="profile" element={<ProfilePage />} />
               <Route path="wallet" element={<WalletPage />} />
               <Route path="quick-recommend" element={<QuickRecommendPage />} />
