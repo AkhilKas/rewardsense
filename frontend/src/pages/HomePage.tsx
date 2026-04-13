@@ -8,25 +8,25 @@ const features = [
     title: "Personalized Scoring",
     description:
       "Analyzes your spending patterns to rank cards specifically for you.",
-    icon: "\u{1F3AF}",
+    iconSrc: "/icons/target.png",
   },
   {
     title: "Real-Time Recommendations",
     description:
       "Get card rankings in seconds based on your unique spending profile.",
-    icon: "\u26A1",
+    iconSrc: "/icons/bolt.png",
   },
   {
     title: "Clear Explanations",
     description:
       "Understand why each card is recommended with clear, plain-language explanations.",
-    icon: "\u{1F4A1}",
+    iconSrc: "/icons/bulb.png",
   },
   {
     title: "Always Up to Date",
     description:
       "Recommendations stay accurate over time as your spending habits evolve.",
-    icon: "\u{1F4CA}",
+    iconSrc: "/icons/chart.png",
   },
 ];
 
@@ -49,11 +49,6 @@ export default function HomePage() {
           <Link to={ctaPath}>
             <Button size="lg">Get Recommendations</Button>
           </Link>
-          <Link to="/dashboard">
-            <Button variant="secondary" size="lg">
-              System Status
-            </Button>
-          </Link>
         </div>
       </section>
 
@@ -64,7 +59,9 @@ export default function HomePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((f) => (
             <Card key={f.title} className="text-center">
-              <div className="text-3xl mb-3">{f.icon}</div>
+              <div className="flex justify-center mb-3">
+                <img src={f.iconSrc} alt={f.title} className="h-8 w-8 object-contain" />
+              </div>
               <h3 className="font-semibold text-secondary mb-2">{f.title}</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {f.description}
