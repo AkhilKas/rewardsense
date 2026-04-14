@@ -525,6 +525,170 @@ def _trigger_catalog_redeploy(**context):
     }
 
 
+@timed_python_task("ingestion.enrich_card_rewards")
+def _enrich_card_rewards(**context):
+    """Enrich merged_cards.json with LLM-sourced category bonus rates.
+
+    For each card that has only a universal_base_rate (no category_bonuses),
+    calls Gemini 2.5 Flash to look up the real reward structure. Cards that
+    already have category_bonuses (e.g. from a previous enrichment run or a
+    richer source) are skipped to avoid unnecessary API calls.
+
+    Writes the enriched data back to merged_cards.json in place so downstream
+    steps and the serving layer always see accurate per-category rates.
+    """
+    import json
+    import logging
+    import os
+    import re
+    import time
+
+    logger = logging.getLogger("airflow.task")
+
+    data_root = get_data_root()
+    merged_path = data_root / "offers" / "merged_cards.json"
+
+    if not merged_path.exists():
+        logger.warning("merged_cards.json not found — skipping enrichment")
+        return {"status": "skipped", "reason": "merged_cards.json missing"}
+
+    cards = json.loads(merged_path.read_text())
+    if not isinstance(cards, list):
+        logger.warning("Unexpected merged_cards.json shape — skipping enrichment")
+        return {"status": "skipped", "reason": "unexpected shape"}
+
+    VALID_CATEGORIES = {
+        "dining",
+        "groceries",
+        "travel",
+        "gas",
+        "streaming",
+        "entertainment",
+        "online_shopping",
+        "drugstore",
+    }
+
+    SYSTEM_PROMPT = (
+        "You are a credit card rewards data API. "
+        "Given a card name and issuer, return ONLY a JSON object with the card's "
+        "current reward rates. Use this exact schema:\n"
+        '{"universal_base_rate": <float>, "category_bonuses": {"<category>": <float>, ...}}\n'
+        "universal_base_rate is the flat earn rate on all other purchases (as a percentage, "
+        "e.g. 1.5 means 1.5%). "
+        "category_bonuses lists only categories where the card earns above the base rate. "
+        f"Valid categories: {', '.join(sorted(VALID_CATEGORIES))}. "
+        "Return only the JSON object, no explanation, no markdown."
+    )
+
+    def _call_gemini(card_name: str, issuer: str) -> dict | None:
+        try:
+            import google.auth
+            from google.auth.transport.requests import Request
+            import urllib.request as _urllib
+
+            credentials, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            credentials.refresh(Request())
+            token = credentials.token
+
+            project_id = os.getenv("GCP_PROJECT_ID", "rewardsense")
+            location = "us-central1"
+            model = "gemini-2.5-flash"
+            endpoint = (
+                f"https://{location}-aiplatform.googleapis.com/v1/projects/"
+                f"{project_id}/locations/{location}/publishers/google/models/"
+                f"{model}:generateContent"
+            )
+            payload = json.dumps(
+                {
+                    "systemInstruction": {
+                        "role": "system",
+                        "parts": [{"text": SYSTEM_PROMPT}],
+                    },
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [{"text": f"Card: {card_name}\nIssuer: {issuer}"}],
+                        }
+                    ],
+                    "generationConfig": {"temperature": 0.0},
+                }
+            ).encode()
+
+            req = _urllib.Request(
+                endpoint,
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with _urllib.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read())
+
+            text = (
+                body.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+                .strip()
+            )
+
+            # Strip markdown fences if present
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning("Gemini enrichment failed for %r: %s", card_name, exc)
+            return None
+
+    enriched = 0
+    skipped = 0
+    failed = 0
+
+    for card in cards:
+        rr = card.get("reward_rates") or {}
+        if isinstance(rr, dict) and rr.get("category_bonuses"):
+            skipped += 1
+            continue  # already has category bonuses
+
+        result = _call_gemini(card.get("card_name", ""), card.get("issuer", ""))
+        if result is None:
+            failed += 1
+            continue
+
+        base = result.get("universal_base_rate")
+        bonuses = result.get("category_bonuses", {})
+
+        # Validate and sanitise
+        if isinstance(base, (int, float)) and 0 < base <= 10:
+            rr["universal_base_rate"] = float(base)
+        bonuses = {
+            k: float(v)
+            for k, v in (bonuses or {}).items()
+            if k in VALID_CATEGORIES and isinstance(v, (int, float)) and 0 < v <= 20
+        }
+        if bonuses:
+            rr["category_bonuses"] = bonuses
+
+        card["reward_rates"] = rr
+        enriched += 1
+
+        # Gentle rate limiting — Gemini Flash free tier is generous but not unlimited
+        time.sleep(0.3)
+
+    merged_path.write_text(json.dumps(cards, indent=2, ensure_ascii=False))
+    logger.info(
+        "Card reward enrichment complete: %d enriched, %d already had bonuses, %d failed",
+        enriched,
+        skipped,
+        failed,
+    )
+    return {"enriched": enriched, "skipped": skipped, "failed": failed}
+
+
 @timed_python_task("ingestion.merge_card_data")
 def _merge_card_data(**context):
     """Merge and deduplicate card data from all ingestion sources."""
@@ -1435,6 +1599,16 @@ with DAG(
             doc_md="Merge and deduplicate card data from scrapers and API.",
         )
 
+        enrich_rewards = PythonOperator(
+            task_id="enrich_card_rewards",
+            python_callable=_enrich_card_rewards,
+            doc_md=(
+                "Call Gemini 2.5 Flash to add category_bonuses for cards that only "
+                "have a flat universal_base_rate from the API. Skips cards that "
+                "already have bonus data."
+            ),
+        )
+
         trigger_catalog_redeploy = PythonOperator(
             task_id="trigger_catalog_redeploy",
             python_callable=_trigger_catalog_redeploy,
@@ -1444,10 +1618,11 @@ with DAG(
             ),
         )
 
-        # Scraping and API run in parallel, then converge at merge, then redeploy
+        # Scraping and API run in parallel → merge → enrich with LLM → redeploy
         (
             [scrape_nerdwallet, scrape_issuers, fetch_api]
             >> merge_cards
+            >> enrich_rewards
             >> trigger_catalog_redeploy
         )
 
