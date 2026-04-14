@@ -40,7 +40,7 @@ import {
 } from "./mock";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
-const USE_MOCK = !API_BASE_URL; // Set to `true` to force mock data for development
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 const TOKEN_KEY = "rs_token";
 
