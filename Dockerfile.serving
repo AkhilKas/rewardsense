@@ -78,8 +78,14 @@ ENV ENABLE_MLFLOW_TRACKING=false
 # LLM explanations disabled by default; set to "true" + supply GCP creds to enable
 ENV ENABLE_LLM_EXPLANATIONS=false
 
-# Gemini-based merchant category classification (falls back to keyword map if disabled/unavailable)
+# Gemini merchant category classification at request time (keyword map fallback if unavailable)
 ENV ENABLE_LLM_CATEGORY=true
+
+# Catalog Gemini enrichment at startup — intentionally OFF in production.
+# The DAG pre-enriches merged_cards.json before GCS so this is never needed
+# in Cloud Run (it would block uvicorn for 60+ seconds enriching ~120 cards).
+# Set to true only in local dev when the GCS file hasn't been enriched yet.
+ENV ENRICH_CATALOG_ON_LOAD=false
 
 # GCP settings (override via env or Secret Manager)
 ENV GCP_PROJECT_ID=rewardsense

@@ -605,7 +605,12 @@ def load_card_catalog(
     loaded_cards = _load_catalog_from_offers(path)
 
     # ── Layer 2: Gemini enrichment for cards missing category bonuses
-    if os.getenv("ENABLE_LLM_CATEGORY", "true").lower() in ("1", "true", "yes"):
+    # Disabled by default (ENRICH_CATALOG_ON_LOAD=false) because in production
+    # the DAG pre-enriches merged_cards.json before it reaches GCS, so calling
+    # Gemini at catalog load time would block uvicorn startup for 60+ seconds
+    # while enriching ~120 cards. Enable locally when GCS credentials are
+    # available but the GCS file hasn't been enriched by the DAG yet.
+    if os.getenv("ENRICH_CATALOG_ON_LOAD", "false").lower() in ("1", "true", "yes"):
         loaded_cards = _enrich_missing_rates(loaded_cards)
 
     # ── Layer 3 prep: build curated entries for duplicate detection
