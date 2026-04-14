@@ -106,7 +106,10 @@ class TestTransactionOptIn:
         token = _signup_and_login(test_client)
         resp = test_client.get("/transactions", headers=_auth_header(token))
         assert resp.status_code == 200
-        assert resp.json()["total"] == 0
+        body = resp.json()
+        assert body["total"] == 0
+        assert body["total_rewards"] == 0.0
+        assert body["total_savings"] == 0.0
 
     def test_unauthenticated_rejected(self, test_client):
         resp = test_client.post(
@@ -231,6 +234,8 @@ class TestTransactionPagination:
         data = resp.json()
         assert data["total"] == 0
         assert data["transactions"] == []
+        assert data["total_rewards"] == 0.0
+        assert data["total_savings"] == 0.0
 
 
 # =====================================================================

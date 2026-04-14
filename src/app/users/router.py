@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -49,65 +50,334 @@ except Exception:
     logger.warning("PersonaModifier failed to load; persona adjustments disabled")
     _persona_modifier = None
 
-# Scorer cached at module scope to avoid per-request instantiation
-_scorer = PersonalizedScorer()
+# Scorer cached at module scope to avoid per-request instantiation.
+# Tries to load a trained model from the local cache written by fetch_catalog.sh
+# at container startup. Falls back to cold-start (point_value=0.01) if absent.
+_MODEL_CACHE_PATH = os.getenv("MODEL_ARTIFACT_PATH", "/tmp/model_cache/model.joblib")
+try:
+    _scorer = PersonalizedScorer.from_artifact(_MODEL_CACHE_PATH)
+    logger.info("Loaded personalization model from %s", _MODEL_CACHE_PATH)
+except Exception as _model_exc:
+    logger.warning(
+        "Personalization model not found at %s (%s) — cold-start mode.",
+        _MODEL_CACHE_PATH,
+        _model_exc,
+    )
+    _scorer = PersonalizedScorer()
 
 # Simple keyword → category resolver for the transaction endpoint
 _MERCHANT_CATEGORY_HINTS: Dict[str, List[str]] = {
+    # Check dining before travel so "uber eats" / "doordash" resolve correctly
     "dining": [
+        # Delivery platforms
+        "doordash",
+        "door dash",
+        "uber eats",
+        "ubereats",
+        "grubhub",
+        "grub hub",
+        "instacart",
+        "seamless",
+        "caviar",
+        "postmates",
+        "gopuff",
+        # Fast food
         "mcdonald",
-        "starbucks",
+        "chick-fil-a",
+        "chickfila",
+        "wendy",
+        "burger king",
+        "taco bell",
+        "popeyes",
+        "five guys",
+        "in-n-out",
+        "shake shack",
+        "sonic",
+        "dairy queen",
+        "kfc",
+        "papa john",
+        "domino",
+        "little caesar",
+        # Casual / chain
         "chipotle",
+        "starbucks",
+        "dunkin",
+        "panera",
+        "subway",
+        "panda express",
+        "olive garden",
+        "applebee",
+        "chili",
+        "texas roadhouse",
+        "outback",
+        "cheesecake factory",
+        "denny",
+        "ihop",
+        "waffle house",
+        # Generic keywords
         "restaurant",
         "cafe",
+        "coffee",
+        "bakery",
+        "diner",
+        "eatery",
+        "steakhouse",
+        "grill",
+        "pizzeria",
         "pizza",
-        "burger",
         "sushi",
-        "taco",
-        "subway",
-        "domino",
-        "kfc",
+        "ramen",
+        "taqueria",
+        "bar & grill",
+        "gastropub",
+        "bistro",
+        "brasserie",
+        "cantina",
+        "trattoria",
     ],
     "groceries": [
-        "walmart",
         "whole foods",
         "trader joe",
         "kroger",
         "safeway",
-        "costco",
-        "aldi",
         "publix",
         "wegmans",
-        "target",
+        "aldi",
+        "sprouts",
+        "meijer",
+        "stop & shop",
+        "stop and shop",
+        "giant",
+        "food lion",
+        "heb",
+        "grocery",
+        "supermarket",
+        "market basket",
+        "winco",
+        "piggly wiggly",
+        "fresh market",
+        "albertson",
+        "vons",
+        "ralphs",
+        "tom thumb",
+        "randall",
+        "winn-dixie",
+        "shoprite",
+        # Wholesale clubs (grocery spend, not travel/general)
+        "costco",
+        "sam's club",
+        "bj's wholesale",
     ],
     "travel": [
+        # Airlines
         "delta",
-        "united",
+        "united airlines",
         "american airlines",
         "southwest",
+        "jetblue",
+        "alaska airlines",
+        "spirit airlines",
+        "frontier airlines",
+        "hawaiian airlines",
+        # Hotels
         "marriott",
         "hilton",
         "hyatt",
+        "ihg",
+        "wyndham",
+        "best western",
+        "radisson",
+        "holiday inn",
+        "sheraton",
+        "westin",
+        "ritz-carlton",
+        "four seasons",
+        "kimpton",
+        "motel",
+        "hotel",
+        "resort",
+        # Booking platforms
         "airbnb",
+        "vrbo",
         "expedia",
-        "booking",
+        "booking.com",
+        "hotels.com",
+        "priceline",
+        "kayak",
+        "orbitz",
+        "hotwire",
+        "travelocity",
+        # Rideshare (not delivery — "uber eats" is caught by dining first)
         "uber",
         "lyft",
+        # Car rental
+        "enterprise",
+        "hertz",
+        "avis",
+        "budget rent",
+        "national car",
+        "alamo",
+        "dollar rent",
+        # Transit
+        "amtrak",
+        "greyhound",
+        "megabus",
     ],
-    "gas": ["shell", "bp", "chevron", "exxon", "mobil", "texaco", "citgo"],
-    "entertainment": [
+    "gas": [
+        "shell",
+        "bp",
+        "chevron",
+        "exxon",
+        "mobil",
+        "texaco",
+        "citgo",
+        "marathon",
+        "sunoco",
+        "valero",
+        "arco",
+        "76 gas",
+        "casey",
+        "kwik trip",
+        "wawa",
+        "sheetz",
+        "speedway",
+        "circle k",
+        "gas station",
+        "fuel",
+        "gasoline",
+    ],
+    # "streaming" matches the category key used in card reward_rates (e.g. Blue Cash Preferred 6x)
+    "streaming": [
         "netflix",
-        "spotify",
         "hulu",
-        "disney",
-        "cinema",
+        "disney+",
+        "disney plus",
+        "hbo",
+        "max",
+        "peacock",
+        "paramount+",
+        "paramount plus",
+        "apple tv",
+        "amazon prime video",
+        "prime video",
+        "crunchyroll",
+        "fubo",
+        "sling",
+        "youtube premium",
+        "spotify",
+        "apple music",
+        "tidal",
+        "pandora",
+        "sirius",
+        "deezer",
+        "audible",
+    ],
+    "entertainment": [
         "amc",
         "regal",
+        "cinemark",
+        "imax",
+        "cinema",
         "theater",
         "ticketmaster",
+        "stubhub",
+        "eventbrite",
+        "livenation",
+        "live nation",
+        "seatgeek",
+        "gamestop",
+        "playstation",
+        "xbox",
+        "nintendo",
+        "steam",
+        "twitch",
+        "bowling",
+        "topgolf",
+        "dave & buster",
+        "escape room",
+        "laser tag",
+        "miniature golf",
+        "arcade",
     ],
-    "online_shopping": ["amazon", "ebay", "etsy", "shopify", "wayfair"],
+    "online_shopping": [
+        "amazon",
+        "ebay",
+        "etsy",
+        "shopify",
+        "wayfair",
+        "chewy",
+        "zappos",
+        "overstock",
+        "newegg",
+        "adorama",
+        "b&h photo",
+        "bestbuy.com",
+        "best buy",
+        "apple store",
+        "apple.com",
+        "walmart.com",
+        "target.com",
+    ],
+    "drugstore": [
+        "cvs",
+        "walgreens",
+        "rite aid",
+        "duane reade",
+        "pharmacy",
+        "drug mart",
+        "health mart",
+    ],
 }
+
+# ---------------------------------------------------------------------------
+# Gemini merchant classifier — used as fallback for merchants not in the
+# keyword map above. Cached per process so the same merchant is never
+# classified twice. Disabled gracefully if GCP creds are unavailable.
+# ---------------------------------------------------------------------------
+_VALID_CATEGORIES = frozenset(_MERCHANT_CATEGORY_HINTS.keys()) | {"other"}
+
+_CATEGORY_CACHE: Dict[str, str] = {}
+
+_GEMINI_SYSTEM_PROMPT = (
+    "You are a credit card reward category classifier. "
+    "Given a merchant name, reply with exactly one word — the spending category it belongs to. "
+    "Valid categories: dining, groceries, travel, gas, streaming, entertainment, "
+    "online_shopping, drugstore, other. "
+    "Rules: delivery apps (DoorDash, Uber Eats, Grubhub) → dining. "
+    "Rideshare without food delivery context → travel. "
+    "Reply with only the category word, no punctuation, no explanation."
+)
+
+
+def _classify_merchant_gemini(merchant: str) -> Optional[str]:
+    """Return a category from Gemini, or None if unavailable/disabled."""
+    if os.getenv("ENABLE_LLM_CATEGORY", "true").lower() not in ("1", "true", "yes"):
+        return None
+
+    key = merchant.lower().strip()
+    if key in _CATEGORY_CACHE:
+        return _CATEGORY_CACHE[key]
+
+    try:
+        from src.model_pipeline.llm.vertex_gemini_client import VertexGeminiClient
+
+        client = VertexGeminiClient(temperature=0.0, timeout_sec=3.0)
+        raw = client.generate(
+            system_message=_GEMINI_SYSTEM_PROMPT,
+            user_message=merchant,
+        )
+        category = raw.strip().lower().split()[0]  # take first word only
+        if category not in _VALID_CATEGORIES:
+            category = "other"
+        _CATEGORY_CACHE[key] = category
+        logger.debug("Gemini classified %r → %s", merchant, category)
+        return category
+    except Exception as exc:
+        logger.debug(
+            "Gemini merchant classification unavailable for %r: %s", merchant, exc
+        )
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Card catalog — loaded from shared module (pipeline + curated cards)
@@ -198,22 +468,25 @@ def _build_portfolio(card_ids: List[str]) -> List[Dict[str, Any]]:
 
 
 def _resolve_category(merchant: str, hint: Optional[str]) -> str:
-    """Return a category string from a merchant name or explicit hint."""
+    """Return a category from hint → keyword map → Gemini → 'other'."""
     if hint:
         return hint.lower()
     lower = merchant.lower()
     for category, keywords in _MERCHANT_CATEGORY_HINTS.items():
         if any(kw in lower for kw in keywords):
             return category
-    return "other"
+    return _classify_merchant_gemini(merchant) or "other"
 
 
 def _resolve_category_heuristic_first(merchant: str, hint: Optional[str]) -> str:
-    """Heuristic lookup first; fall back to user-supplied category, then 'other'."""
+    """Keyword map first, then Gemini for unknowns, then hint, then 'other'."""
     lower = merchant.lower()
     for category, keywords in _MERCHANT_CATEGORY_HINTS.items():
         if any(kw in lower for kw in keywords):
             return category
+    gemini_category = _classify_merchant_gemini(merchant)
+    if gemini_category:
+        return gemini_category
     if hint:
         return hint.lower()
     return "other"
@@ -304,7 +577,11 @@ def _build_card_explanation(
             if cat not in highlight_text and amt > 0
         ]
         if missing_cats:
-            con2 = f"No bonus rate for {missing_cats[0]} — your {'#2' if len(missing_cats) > 1 else ''} spending category"
+            label = "#2" if len(missing_cats) > 1 else ""
+            con2 = (
+                f"No bonus rate for {missing_cats[0]}"
+                f" — your {label} spending category"
+            )
         else:
             con2 = "Rewards value depends on how you redeem points"
     else:
@@ -342,7 +619,36 @@ def _run_recommendation(
 ) -> PersonaRecommendResponse:
     """Score portfolio, apply persona modifier, return enriched response."""
     try:
-        result = _scorer.score(portfolio=portfolio, transaction=transaction)
+        if spending_categories:
+            # Multi-category scoring: aggregate reward across every category
+            # weighted by spend amount so the ranking reflects the user's full
+            # spending profile rather than just the single dominant category.
+            card_totals: Dict[str, Dict[str, Any]] = {}
+            for cat, amt in spending_categories.items():
+                if amt <= 0:
+                    continue
+                txn = {"amount": amt, "category": cat, "merchant": f"{cat}-merchant"}
+                for score in _scorer.scorer.score_portfolio(portfolio, txn):
+                    cid = score["card_id"]
+                    if cid not in card_totals:
+                        card_totals[cid] = dict(score)
+                        card_totals[cid]["reward_amount"] = 0.0
+                    card_totals[cid]["reward_amount"] += score["reward_amount"]
+
+            for entry in card_totals.values():
+                entry["raw_reward_amount"] = entry["reward_amount"]
+
+            ranked_raw_agg = _scorer.ranker.rank(list(card_totals.values()))
+            result = {
+                "ranked": ranked_raw_agg,
+                "best_card_id": (
+                    ranked_raw_agg[0]["card_id"] if ranked_raw_agg else None
+                ),
+                "point_value": _scorer.default_point_value,
+                "is_personalized": False,
+            }
+        else:
+            result = _scorer.score(portfolio=portfolio, transaction=transaction)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -511,7 +817,7 @@ def recommend_transaction(
     profile = service.get_profile(db, current_user)
 
     is_generic = len(profile.saved_card_ids) == 0
-    card_ids = [c.card_id for c in _CATALOG] if is_generic else profile.saved_card_ids
+    card_ids = [c.card_id for c in _CATALOG]
     portfolio = _build_portfolio(card_ids)
 
     category = _resolve_category(payload.merchant, payload.category)

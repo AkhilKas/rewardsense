@@ -78,6 +78,9 @@ ENV ENABLE_MLFLOW_TRACKING=false
 # LLM explanations disabled by default; set to "true" + supply GCP creds to enable
 ENV ENABLE_LLM_EXPLANATIONS=false
 
+# Gemini-based merchant category classification (falls back to keyword map if disabled/unavailable)
+ENV ENABLE_LLM_CATEGORY=true
+
 # GCP settings (override via env or Secret Manager)
 ENV GCP_PROJECT_ID=rewardsense
 ENV VERTEX_LOCATION=us-central1
@@ -100,11 +103,12 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl --fail http://localhost:8080/health || exit 1
 
+# ---- Startup script ----
+# Fetches merged_cards.json from GCS before starting the server so the
+# catalog always reflects the latest pipeline run without baking data
+# into the image.  Falls back gracefully if GCS is unreachable.
+COPY --chown=appuser:appgroup scripts/fetch_catalog.sh /app/scripts/fetch_catalog.sh
+RUN chmod +x /app/scripts/fetch_catalog.sh
+
 # ---- Entrypoint ----
-# Shell form so $UVICORN_WORKERS is expanded at runtime.
-CMD uvicorn app.server:create_app \
-    --factory \
-    --host 0.0.0.0 \
-    --port 8080 \
-    --workers ${UVICORN_WORKERS} \
-    --log-level info
+CMD ["/bin/sh", "-c", "/app/scripts/fetch_catalog.sh && uvicorn app.server:create_app --factory --host 0.0.0.0 --port 8080 --workers ${UVICORN_WORKERS} --log-level info"]

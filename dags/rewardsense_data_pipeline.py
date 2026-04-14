@@ -472,6 +472,59 @@ def _generate_synthetic_data(**context):
         raise
 
 
+def _trigger_catalog_redeploy(**context):
+    """Dispatch serving_redeploy after merge_card_data so the card catalog
+    is refreshed independently of the model pipeline's quality gates."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from airflow.models import Variable
+
+    github_token = Variable.get("GITHUB_TOKEN", default_var=None)
+    if not github_token:
+        import logging
+
+        logging.getLogger("airflow.task").warning(
+            "GITHUB_TOKEN not set — skipping catalog redeploy dispatch"
+        )
+        return {"status": "skipped"}
+
+    github_owner = Variable.get("GITHUB_OWNER", default_var="Raul2008NEU")
+    github_repo = Variable.get("GITHUB_REPO", default_var="rewardsense")
+    url = (
+        f"https://api.github.com/repos/{github_owner}/{github_repo}"
+        f"/actions/workflows/serving_redeploy.yml/dispatches"
+    )
+    payload = _json.dumps(
+        {"ref": "main", "inputs": {"trigger_source": "data_pipeline"}}
+    ).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            http_status = resp.status
+    except urllib.error.HTTPError as exc:
+        import logging
+
+        logging.getLogger("airflow.task").error(
+            "GitHub dispatch error: %s %s", exc.code, exc.reason
+        )
+        raise
+    return {
+        "status": "dispatched",
+        "trigger_source": "data_pipeline",
+        "http_status": http_status,
+    }
+
+
 @timed_python_task("ingestion.merge_card_data")
 def _merge_card_data(**context):
     """Merge and deduplicate card data from all ingestion sources."""
@@ -527,13 +580,39 @@ def _merge_card_data(**context):
         )
         return (_norm(card_name), _norm(issuer))
 
+    _JUNK_PREFIXES = (
+        "best for:",
+        "our pick for:",
+        "best overall",
+        "top pick",
+        "editor's pick",
+        "best cash back",
+        "best travel",
+    )
+
+    def _is_valid_card(card: dict) -> bool:
+        name = _norm(
+            card.get("name") or card.get("card_name") or card.get("title") or ""
+        )
+        if not name:
+            return False
+        if any(name.startswith(p) for p in _JUNK_PREFIXES):
+            return False
+        # Require at least one reward signal so the catalog loader won't reject it
+        has_rate = (
+            isinstance(card.get("reward_rates"), dict)
+            or card.get("base_reward_rate") is not None
+            or card.get("universal_cashback_percent") is not None
+        )
+        return has_rate
+
+    # Priority order: creditcardbonuses (richest data) → issuers → nerdwallet
     merged_cards = []
     seen_keys = set()
-    for card in nerdwallet_cards + issuer_cards + api_cards:
+    for card in api_cards + issuer_cards + nerdwallet_cards:
+        if not _is_valid_card(card):
+            continue
         key = _dedupe_key(card)
-        if not key[0]:
-            # Keep cards missing a name, but avoid duplicate empty-name payloads.
-            key = (f"unnamed:{len(merged_cards)}", key[1])
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -1307,7 +1386,10 @@ def _check_critical_gate(**context):
 with DAG(
     dag_id="rewardsense_data_pipeline",
     default_args=default_args,
-    description="Weekly pipeline: ingest → preprocess → version → report for credit card recommendation data",
+    description=(
+        "Weekly pipeline: ingest → preprocess → version → report"
+        " for credit card recommendation data"
+    ),
     doc_md=DAG_DOC_MD,
     schedule="0 6 * * 0",  # Every Sunday at 06:00 UTC
     start_date=datetime(2025, 1, 1),
@@ -1353,8 +1435,21 @@ with DAG(
             doc_md="Merge and deduplicate card data from scrapers and API.",
         )
 
-        # Scraping and API run in parallel, then converge at merge
-        [scrape_nerdwallet, scrape_issuers, fetch_api] >> merge_cards
+        trigger_catalog_redeploy = PythonOperator(
+            task_id="trigger_catalog_redeploy",
+            python_callable=_trigger_catalog_redeploy,
+            doc_md=(
+                "Dispatch serving_redeploy after merge so the catalog"
+                " refreshes independently of model training."
+            ),
+        )
+
+        # Scraping and API run in parallel, then converge at merge, then redeploy
+        (
+            [scrape_nerdwallet, scrape_issuers, fetch_api]
+            >> merge_cards
+            >> trigger_catalog_redeploy
+        )
 
         # Synthetic data generation runs in parallel (no merge dependency)
         # Both merge_cards and generate_synthetic feed into preprocessing

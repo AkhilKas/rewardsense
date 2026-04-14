@@ -175,6 +175,17 @@ def list_transactions(
         .scalar()
     ) or 0
 
+    agg_row = (
+        db.query(
+            func.coalesce(func.sum(TransactionLog.reward_earned), 0.0),
+            func.coalesce(func.sum(TransactionLog.estimated_savings), 0.0),
+        )
+        .filter(TransactionLog.user_id == user.id)
+        .one()
+    )
+    total_rewards = round(float(agg_row[0] or 0.0), 2)
+    total_savings = round(float(agg_row[1] or 0.0), 2)
+
     offset = (page - 1) * page_size
     rows = (
         db.query(TransactionLog)
@@ -191,6 +202,8 @@ def list_transactions(
         page=page,
         page_size=page_size,
         has_next=(offset + page_size) < total,
+        total_rewards=total_rewards,
+        total_savings=total_savings,
     )
 
 

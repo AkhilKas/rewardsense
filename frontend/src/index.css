@@ -102,3 +102,19 @@ input[type="range"]::-moz-range-thumb {
 .animate-card-in {
   animation: fadeSlideIn 0.4s ease-out both;
 }
+
+/* Results celebration — variables set per particle in Confetti.tsx */
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(0, -2vh, 0) rotate(0deg);
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--confetti-drift, 0px), 108vh, 0)
+      rotate(var(--confetti-spin, 540deg));
+    opacity: 0;
+  }
+}

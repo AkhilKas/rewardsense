@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { getCardCatalog, getMe, updateSavedCards } from "../api/client";
 import type { CardCatalogItem } from "../types";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import CardImage from "../components/CardImage";
 
+function sameCardSelection(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((id, i) => id === sb[i]);
+}
+
 export default function WalletPage() {
   const [catalog, setCatalog] = useState<CardCatalogItem[]>([]);
   const [savedCardIds, setSavedCardIds] = useState<string[]>([]);
+  const [initialSavedIds, setInitialSavedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,7 +28,9 @@ export default function WalletPage() {
       setError("");
       try {
         const [me, cards] = await Promise.all([getMe(), getCardCatalog()]);
-        setSavedCardIds(me.saved_card_ids);
+        const ids = me.saved_card_ids;
+        setSavedCardIds(ids);
+        setInitialSavedIds(ids);
         setCatalog(cards);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load wallet");
@@ -43,6 +53,21 @@ export default function WalletPage() {
     );
   }, [catalog, search]);
 
+  const dirty = useMemo(
+    () => !sameCardSelection(savedCardIds, initialSavedIds),
+    [savedCardIds, initialSavedIds],
+  );
+
+  const catalogById = useMemo(() => {
+    const m = new Map<string, CardCatalogItem>();
+    for (const c of catalog) m.set(c.card_id, c);
+    return m;
+  }, [catalog]);
+
+  function removeCardFromWallet(cardId: string) {
+    setSavedCardIds((prev) => prev.filter((id) => id !== cardId));
+  }
+
   function toggleCard(cardId: string) {
     setSavedCardIds((prev) =>
       prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
@@ -55,6 +80,7 @@ export default function WalletPage() {
     setMessage("");
     try {
       await updateSavedCards(savedCardIds);
+      setInitialSavedIds([...savedCardIds]);
       setMessage("Wallet updated successfully.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save wallet");
@@ -80,6 +106,35 @@ export default function WalletPage() {
         </p>
       </div>
 
+      <div
+        className={`sticky top-16 z-40 -mx-4 px-4 py-3 sm:-mx-6 sm:px-6 rounded-lg border transition-colors duration-200 ${
+          dirty
+            ? "border-primary/40 bg-primary/5 dark:bg-primary/10 shadow-sm"
+            : "border-border bg-card/90 dark:bg-card/90 backdrop-blur-sm"
+        }`}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {dirty ? (
+            <p
+              className="text-xs font-medium text-amber-800 dark:text-amber-300 animate-pulse"
+              aria-live="polite"
+            >
+              Unsaved changes
+            </p>
+          ) : (
+            <span className="min-h-[1.25rem] sm:flex-1" aria-hidden />
+          )}
+          <Button
+            type="button"
+            onClick={handleSave}
+            loading={saving}
+            className={`w-full sm:w-auto shrink-0 ${dirty ? "shadow-md shadow-primary/20" : ""}`}
+          >
+            Save Wallet
+          </Button>
+        </div>
+      </div>
+
       <Card>
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <input
@@ -93,6 +148,35 @@ export default function WalletPage() {
             {savedCardIds.length} cards selected
           </div>
         </div>
+        {savedCardIds.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-border">
+            <p className="text-xs font-medium text-secondary mb-2">Selected cards</p>
+            <div className="flex flex-wrap gap-2">
+              {savedCardIds.map((cardId) => {
+                const card = catalogById.get(cardId);
+                const title = card?.card_name ?? cardId;
+                return (
+                  <span
+                    key={cardId}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 dark:bg-primary/15 px-2.5 py-1 text-xs font-medium text-secondary"
+                  >
+                    <span className="max-w-[200px] truncate sm:max-w-[260px]">
+                      {title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeCardFromWallet(cardId)}
+                      className="shrink-0 rounded-full p-0.5 text-slate-600 hover:bg-primary/20 hover:text-secondary dark:text-slate-300 dark:hover:bg-primary/25"
+                      aria-label={`Remove ${title}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </Card>
 
       {error && (
@@ -159,12 +243,6 @@ export default function WalletPage() {
             </label>
           );
         })}
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={handleSave} loading={saving}>
-          Save Wallet
-        </Button>
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
+
 def _trigger_serving_redeploy(**context):
     """Dispatch the serving_redeploy GitHub Actions workflow.
 
@@ -38,7 +39,9 @@ def _trigger_serving_redeploy(**context):
     # Determine who originally triggered this pipeline run
     conf = dag_run.conf or {}
     triggered_by = conf.get("triggered_by", "")
-    trigger_source = "retrain_pipeline" if "monitoring" in triggered_by else "model_pipeline"
+    trigger_source = (
+        "retrain_pipeline" if "monitoring" in triggered_by else "model_pipeline"
+    )
 
     github_token = Variable.get("GITHUB_TOKEN")
     github_owner = Variable.get("GITHUB_OWNER", default_var="Raul2008NEU")
@@ -78,7 +81,11 @@ def _trigger_serving_redeploy(**context):
 
     ti.xcom_push(key="trigger_source", value=trigger_source)
     ti.xcom_push(key="github_dispatch_status", value=http_status)
-    return {"status": "dispatched", "trigger_source": trigger_source, "http_status": http_status}
+    return {
+        "status": "dispatched",
+        "trigger_source": trigger_source,
+        "http_status": http_status,
+    }
 
 
 with DAG(
@@ -108,7 +115,10 @@ with DAG(
     with TaskGroup("data_preparation") as data_prep:
         data_loading = BashOperator(
             task_id="data_loading",
-            bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.data_loader 1>&2; echo "data_loading: OK"',
+            bash_command=(
+                "set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.data_loader"
+                ' 1>&2; echo "data_loading: OK"'
+            ),
             env=base_task_env,
             append_env=True,
             do_xcom_push=True,
@@ -116,7 +126,10 @@ with DAG(
 
         feature_engineering = BashOperator(
             task_id="feature_engineering",
-            bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.personalization.features 1>&2; echo "feature_engineering: OK"',
+            bash_command=(
+                "set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.personalization.features"
+                ' 1>&2; echo "feature_engineering: OK"'
+            ),
             env=base_task_env,
             append_env=True,
             do_xcom_push=True,
@@ -128,7 +141,10 @@ with DAG(
     with TaskGroup("model_development") as model_dev:
         model_training = BashOperator(
             task_id="model_training",
-            bash_command='set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.train 1>&2; echo "model_training: OK"',
+            bash_command=(
+                "set -e; cd $DAGS_FOLDER; python -m src.model_pipeline.train"
+                ' 1>&2; echo "model_training: OK"'
+            ),
             env={
                 "MLFLOW_TRACKING_URI": "https://mlflow-server-760934308287.us-central1.run.app",
                 "SLACK_WEBHOOK_URL": Variable.get("SLACK_WEBHOOK_URL", default_var=""),
@@ -177,15 +193,39 @@ print(json.dumps({'gate': 'bias_detection', 'passed': True}))
         registry_push = BashOperator(
             task_id="registry_push",
             bash_command="""set -e; cd $DAGS_FOLDER; python -c "
+import mlflow
+from mlflow.tracking import MlflowClient
+import os
+
+tracking_uri = os.environ['MLFLOW_TRACKING_URI']
+mlflow.set_tracking_uri(tracking_uri)
+client = MlflowClient(tracking_uri)
+
+# Find the latest version that is not yet in Production
+versions = client.get_latest_versions('personalization', stages=['None', 'Staging'])
+if not versions:
+    # Fall back to searching all versions
+    all_versions = client.search_model_versions(\"name='personalization'\")
+    versions = [
+        v for v in all_versions
+        if v.current_stage not in ('Production', 'Archived')
+    ]
+
+if not versions:
+    raise RuntimeError('No personalization model version found to promote to Production')
+
+latest = sorted(versions, key=lambda v: int(v.version))[-1]
+client.transition_model_version_stage(
+    'personalization', latest.version, 'Production',
+    archive_existing_versions=True
+)
 import json
-from src.model_pipeline.cd.gates import RegistryGate
-metrics = json.load(open('/tmp/model_pipeline/metrics.json'))
-version = 'v' + str(metrics.get('run_id', '1.0'))
-gate = RegistryGate('rewardsense-prod', 'us-central1', 'rewardsense-models', 'personalization')
-result = gate.push('/tmp/model_pipeline/model_artifact', version)
-print(json.dumps({'gate': 'registry_push', 'version': version, 'result': str(result)}))
+print(json.dumps({'gate': 'registry_push', 'version': latest.version, 'stage': 'Production'}))
 " """,
-            env=base_task_env,
+            env={
+                "MLFLOW_TRACKING_URI": "https://mlflow-server-760934308287.us-central1.run.app",
+                **base_task_env,
+            },
             append_env=True,
             do_xcom_push=True,
         )
@@ -202,4 +242,11 @@ print(json.dumps({'gate': 'registry_push', 'version': version, 'result': str(res
     )
 
     # DAG execution order
-    wait_for_data_pipeline >> data_prep >> model_dev >> quality_gates >> deployment >> trigger_redeploy
+    (
+        wait_for_data_pipeline
+        >> data_prep
+        >> model_dev
+        >> quality_gates
+        >> deployment
+        >> trigger_redeploy
+    )

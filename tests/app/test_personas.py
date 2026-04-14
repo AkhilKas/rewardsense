@@ -146,9 +146,8 @@ def test_portfolio_recommendation_is_generic_when_no_saved_cards(test_client):
     assert len(data["ranked"]) > 0
 
 
-def test_portfolio_recommendation_uses_saved_cards(test_client):
+def test_portfolio_recommendation_card_finder_excludes_wallet_cards(test_client):
     token = _signup_and_token(test_client)
-    # Save only one card
     test_client.put(
         "/me/cards",
         json={"card_ids": ["citi_double_cash"]},
@@ -156,14 +155,25 @@ def test_portfolio_recommendation_uses_saved_cards(test_client):
     )
     res = test_client.post(
         "/recommendations/portfolio",
-        json={"spending_categories": {"dining": 300.0}, "monthly_spend": 300.0},
+        json={
+            "spending_categories": {"dining": 300.0},
+            "monthly_spend": 300.0,
+            "use_full_catalog": True,
+        },
         headers=_auth(token),
     )
     assert res.status_code == 200
     data = res.json()
     assert data["is_generic"] is False
     card_ids = [c["card_id"] for c in data["ranked"]]
-    assert card_ids == ["citi_double_cash"]
+    assert len(card_ids) == 4
+    assert "citi_double_cash" not in card_ids
+    assert set(card_ids) == {
+        "chase_sapphire_preferred",
+        "amex_gold",
+        "capital_one_venture",
+        "discover_it",
+    }
 
 
 def test_transaction_recommendation_resolves_merchant_category(test_client):

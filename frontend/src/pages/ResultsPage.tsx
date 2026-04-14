@@ -6,6 +6,7 @@ import Button from "../components/Button";
 import ScoreGauge from "../components/ScoreGauge";
 import Collapsible from "../components/Collapsible";
 import FeedbackButtons from "../components/FeedbackButtons";
+import Confetti from "../components/Confetti";
 import { submitFeedback } from "../api/client";
 import type { PredictionResponse, FeedbackReasonTag } from "../types";
 import type {
@@ -25,6 +26,11 @@ const FALLBACK_CONS = [
   "Annual fee may offset rewards for low spenders.",
   "Reward rates may vary by merchant within categories.",
 ];
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Card View — staggered fade-in list                                */
@@ -307,10 +313,13 @@ export default function ResultsPage() {
   const [results] = useState<RecommendationResultViewModel | null>(() => {
     const state = location.state as PredictionResponse | null;
     return state ? mapPredictionToRecommendationVM(state) : null;
-  }
-  );
+  });
 
   const [view, setView] = useState<"cards" | "compare">("cards");
+  const [showConfetti, setShowConfetti] = useState(() => {
+    const state = location.state as PredictionResponse | null;
+    return Boolean(state && !prefersReducedMotion());
+  });
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -322,12 +331,20 @@ export default function ResultsPage() {
     }
   }, [results]);
 
+  useEffect(() => {
+    if (!results || prefersReducedMotion()) return;
+    const t = window.setTimeout(() => setShowConfetti(false), 2500);
+    return () => window.clearTimeout(t);
+  }, [results]);
+
   if (!results) {
     return <Navigate to="/recommend" replace />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <>
+      {showConfetti ? <Confetti /> : null}
+      <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -376,5 +393,6 @@ export default function ResultsPage() {
         <CompareView cards={results.cards} />
       )}
     </div>
+    </>
   );
 }

@@ -125,8 +125,31 @@ def main():
         shutil.rmtree(artifact_dir)
     artifact_dir.mkdir(parents=True)
 
-    # 7. Write model artifact locally
+    # 7. Write model artifact locally (for DAG quality gates)
     joblib.dump(best.model, artifact_dir / "model.joblib")
+
+    # 8. Register to MLflow Model Registry so the serving layer can load it
+    if tracking_uri:
+        try:
+            import mlflow
+
+            with mlflow.start_run(run_name="best_model_registration"):
+                mlflow.sklearn.log_model(
+                    best.model,
+                    artifact_path="model",
+                    registered_model_name="personalization",
+                )
+                mlflow.log_metrics({k: v for k, v in metrics.items() if k != "run_id"})
+            logger.info(
+                "Registered best model to MLflow Model Registry as 'personalization'"
+            )
+        except Exception as e:
+            logger.error(f"Failed to register model to MLflow: {e}")
+            # Don't exit — local artifact is still valid for quality gates
+    else:
+        logger.warning(
+            "MLFLOW_TRACKING_URI not set — skipping MLflow Model Registry registration"
+        )
 
     logger.info(f"Integration artifacts written to {out_dir}")
     sys.exit(0)

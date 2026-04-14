@@ -423,12 +423,12 @@ class TestProjectedSavings:
 
 
 # ---------------------------------------------------------------------------
-# Wallet fallback to curated catalog
+# Portfolio: empty wallet / wallet-only / card-finder (use_full_catalog)
 # ---------------------------------------------------------------------------
 
 
 class TestWalletFallback:
-    """Ensure generic catalog fallback when user has no saved cards."""
+    """Portfolio behavior depends on saved wallet and use_full_catalog flag."""
 
     def test_given_no_saved_cards_when_recommend_then_is_generic_true(
         self, test_client
@@ -455,10 +455,12 @@ class TestWalletFallback:
         # All 5 catalog cards should be present
         assert len(data["ranked"]) == 5
 
-    def test_given_saved_cards_when_recommend_then_is_generic_false(self, test_client):
-        """Given a user with saved cards
+    def test_given_saved_cards_when_recommend_then_wallet_only_ranked(
+        self, test_client
+    ):
+        """Given a user with saved cards and default body (no use_full_catalog)
         When POST /recommendations/portfolio
-        Then is_generic is False and only saved cards appear.
+        Then is_generic is False and only saved cards are ranked.
         """
         token = _signup_and_token(
             test_client,
@@ -478,6 +480,39 @@ class TestWalletFallback:
         assert data["is_generic"] is False
         assert len(data["ranked"]) == 1
         assert data["ranked"][0]["card_id"] == "amex_gold"
+
+    def test_given_saved_cards_when_use_full_catalog_then_excludes_wallet(
+        self, test_client
+    ):
+        token = _signup_and_token(
+            test_client,
+            {
+                "email": "finder@example.com",
+                "password": "password123",
+                "display_name": "Finder",
+            },
+        )
+        _save_cards(test_client, token, ["amex_gold"])
+        res = test_client.post(
+            "/recommendations/portfolio",
+            json={
+                "spending_categories": {"dining": 200.0},
+                "monthly_spend": 200.0,
+                "use_full_catalog": True,
+            },
+            headers=_auth(token),
+        )
+        data = res.json()
+        assert data["is_generic"] is False
+        ranked_ids = {c["card_id"] for c in data["ranked"]}
+        assert len(ranked_ids) == 4
+        assert "amex_gold" not in ranked_ids
+        assert ranked_ids == {
+            "chase_sapphire_preferred",
+            "citi_double_cash",
+            "capital_one_venture",
+            "discover_it",
+        }
 
 
 # ---------------------------------------------------------------------------
