@@ -327,6 +327,44 @@ def _fetch_catalog_from_gcs(dest: Path) -> bool:
         return False
 
 
+def _norm(s: str) -> str:
+    """Strip non-alphanumeric characters and lowercase for fuzzy matching."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _pipeline_card_is_covered_by_curated(
+    pipeline_card: Dict[str, Any],
+    curated_index: Dict[str, Dict[str, Any]],
+) -> bool:
+    """Return True if a pipeline card is a duplicate of a curated card.
+
+    Matches on same normalised issuer AND one name being a substring of
+    the other (e.g. pipeline "Gold" / issuer AMERICAN_EXPRESS is covered by
+    curated "Amex Gold Card" / issuer American Express).
+    """
+    p_name = _norm(str(pipeline_card.get("card_name", "")))
+    if not p_name:
+        return False
+
+    p_tokens = set(re.split(r"[^a-z0-9]+", _norm(str(pipeline_card.get("issuer", "")))))
+
+    for curated in curated_index.values():
+        c_name = _norm(str(curated.get("card_name", "")))
+
+        # Issuer must share a common token (handles "AMERICAN_EXPRESS" vs "American Express")
+        c_tokens = set(re.split(r"[^a-z0-9]+", _norm(str(curated.get("issuer", "")))))
+        issuer_overlap = bool(p_tokens & c_tokens - {""})
+
+        if not issuer_overlap:
+            continue
+
+        # Name match: one is a substring of the other
+        if p_name in c_name or c_name in p_name:
+            return True
+
+    return False
+
+
 def load_card_catalog(
     catalog_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
@@ -337,8 +375,11 @@ def load_card_catalog(
     2. GCS fetch if local file is absent and google-cloud-storage is available
     3. 9 curated hardcoded cards as final fallback
 
-    Curated cards always override pipeline entries by card_id so hand-verified
-    category bonuses and key benefits take precedence.
+    Curated cards always take precedence. Pipeline cards that are fuzzy-matched
+    to a curated card (same issuer + name is substring of the other) are dropped
+    so the correct hand-verified reward rates are shown rather than the
+    incomplete API data (e.g. the API stores Amex Gold as "Gold" with only
+    universal_base_rate=1.0, missing the 4x dining/groceries bonuses).
     """
     path = Path(
         catalog_path or os.getenv("CARD_CATALOG_PATH", str(DEFAULT_CATALOG_PATH))
@@ -349,10 +390,23 @@ def load_card_catalog(
 
     loaded_cards = _load_catalog_from_offers(path)
 
-    cards_by_id: Dict[str, Dict[str, Any]] = {
-        card["card_id"]: dict(card) for card in loaded_cards
+    # Build curated index for duplicate detection
+    curated_index: Dict[str, Dict[str, Any]] = {
+        c["card_id"]: c for c in CURATED_CARD_CATALOG
     }
-    # Curated cards override scraped entries
+
+    cards_by_id: Dict[str, Dict[str, Any]] = {}
+    skipped = 0
+    for card in loaded_cards:
+        if _pipeline_card_is_covered_by_curated(card, curated_index):
+            skipped += 1
+            continue
+        cards_by_id[card["card_id"]] = dict(card)
+
+    if skipped:
+        logger.debug("Dropped %d pipeline cards shadowed by curated entries", skipped)
+
+    # Curated cards override any remaining pipeline entries with the same card_id
     for card in CURATED_CARD_CATALOG:
         cards_by_id[card["card_id"]] = dict(card)
 
