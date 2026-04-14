@@ -298,17 +298,55 @@ def _load_catalog_from_offers(path: Path) -> List[Dict[str, Any]]:
     return list(cards_by_id.values())
 
 
+_GCS_BUCKET = "us-central1-rewardsense-com-8e7127ac-bucket"
+_GCS_CATALOG_OBJECT = "data/processed/current/offers/merged_cards.json"
+
+
+def _fetch_catalog_from_gcs(dest: Path) -> bool:
+    """Download merged_cards.json from GCS into dest.
+
+    Returns True on success, False on any error (missing creds, network, etc.).
+    Silently skips so callers fall back to curated cards.
+    """
+    try:
+        from google.cloud import storage  # type: ignore[import]
+
+        client = storage.Client()
+        bucket = client.bucket(_GCS_BUCKET)
+        blob = bucket.blob(_GCS_CATALOG_OBJECT)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        blob.download_to_filename(str(dest))
+        logger.info(
+            "Fetched card catalog from GCS: %s (%d bytes)", dest, dest.stat().st_size
+        )
+        return True
+    except Exception as exc:
+        logger.debug(
+            "GCS catalog fetch skipped (%s) — using local/curated fallback", exc
+        )
+        return False
+
+
 def load_card_catalog(
     catalog_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Load the full card catalog (pipeline + curated).
 
-    Curated cards override scraped ones by ``card_id`` so hand-verified
-    category bonuses and key benefits are always used for those cards.
+    Resolution order:
+    1. Local merged_cards.json (CARD_CATALOG_PATH env var or default path)
+    2. GCS fetch if local file is absent and google-cloud-storage is available
+    3. 9 curated hardcoded cards as final fallback
+
+    Curated cards always override pipeline entries by card_id so hand-verified
+    category bonuses and key benefits take precedence.
     """
     path = Path(
         catalog_path or os.getenv("CARD_CATALOG_PATH", str(DEFAULT_CATALOG_PATH))
     )
+
+    if not path.exists():
+        _fetch_catalog_from_gcs(path)
+
     loaded_cards = _load_catalog_from_offers(path)
 
     cards_by_id: Dict[str, Dict[str, Any]] = {
