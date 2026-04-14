@@ -27,9 +27,13 @@ from src.model_pipeline.scoring.card_ranker import CardRanker
 from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
 
 # Default point-value multiplier for cold-start users (no feature data).
-# Represents a neutral scaling that leaves raw scores unchanged relative
-# to each other while still providing a dollar-value interpretation.
-DEFAULT_POINT_VALUE = 0.01
+# Must be 1.0 because TransactionScorer.calculate_reward already returns
+# dollar amounts (amount * rate / 100). A value of 0.01 would incorrectly
+# divide by 100 again, making a $150 reward appear as $1.50.
+# When the ML model is loaded it returns a user-specific multiplier != 1.0
+# to weight point-earning cards relative to cashback cards based on how
+# much that user actually values transferable points.
+DEFAULT_POINT_VALUE = 1.0
 
 
 class PersonalizedScorer:
