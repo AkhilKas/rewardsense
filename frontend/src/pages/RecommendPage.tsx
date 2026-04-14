@@ -19,7 +19,7 @@ import {
   type WizardFormState,
   type WizardStep,
 } from "../components/recommend/wizardTypes";
-import { getCardCatalog, recommendPortfolio } from "../api/client";
+import { getCardCatalog, recommendPortfolio, updateSavedCards } from "../api/client";
 import type { CardCatalogItem, SpendingCategories } from "../types";
 import { mapPortfolioToPredictionResponse } from "../viewmodels/viewMappers";
 import { useAuth } from "../context/AuthContext";
@@ -73,13 +73,20 @@ export default function RecommendPage() {
     form.selectedArchetype ?? detectedArchetype;
 
   useEffect(() => {
-    if (!user?.reward_preference) return;
+    if (!user) return;
     setForm((prev) => ({
       ...prev,
+      // Pre-populate cards the user already has saved in their wallet
+      currentCards:
+        prev.currentCards.length > 0
+          ? prev.currentCards
+          : (user.saved_card_ids ?? []),
       selectedRewards:
         prev.selectedRewards.length > 0
           ? prev.selectedRewards
-          : [user.reward_preference],
+          : user.reward_preference
+            ? [user.reward_preference]
+            : [],
     }));
   }, [user]);
 
@@ -158,6 +165,12 @@ export default function RecommendPage() {
         ...INITIAL_SPENDING,
         ...form.spending,
       };
+
+      // Persist card selections to the wallet so they're reflected in future
+      // sessions and excluded from new-card recommendations automatically.
+      if (form.currentCards.length > 0) {
+        await updateSavedCards(form.currentCards);
+      }
 
       const start = performance.now();
       const [portfolioResult, catalog] = await Promise.all([
