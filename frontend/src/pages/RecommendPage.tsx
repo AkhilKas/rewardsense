@@ -8,8 +8,11 @@ import ReviewStep from "../components/recommend/ReviewStep";
 import SpendingStep from "../components/recommend/SpendingStep";
 import StepIndicator from "../components/recommend/StepIndicator";
 import {
+  ARCHETYPE_META,
+  detectArchetype,
   INITIAL_SPENDING,
   type CategoryKey,
+  type FrontendArchetype,
 } from "../components/recommend/constants";
 import {
   createInitialWizardState,
@@ -62,6 +65,12 @@ export default function RecommendPage() {
     () => Object.values(form.spending).reduce((a, b) => a + b, 0),
     [form.spending],
   );
+  const detectedArchetype = useMemo(
+    () => detectArchetype(form.spending),
+    [form.spending],
+  );
+  const selectedArchetype: FrontendArchetype =
+    form.selectedArchetype ?? detectedArchetype;
 
   useEffect(() => {
     if (!user?.reward_preference) return;
@@ -156,6 +165,7 @@ export default function RecommendPage() {
           spending_categories: spendingCategories as Record<string, number>,
           monthly_spend: totalSpend,
           use_full_catalog: true,
+          personas: [ARCHETYPE_META[selectedArchetype].backendPersona],
         }),
         getCardCatalog(),
       ]);
@@ -165,6 +175,7 @@ export default function RecommendPage() {
         catalog,
         totalSpend,
         latencyMs: Math.round(performance.now() - start),
+        selectedArchetype,
       });
       navigate("/results", { state: response });
     } catch (err) {
@@ -174,7 +185,7 @@ export default function RecommendPage() {
     } finally {
       setLoading(false);
     }
-  }, [form, navigate, totalSpend]);
+  }, [form, navigate, selectedArchetype, totalSpend]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -219,6 +230,7 @@ export default function RecommendPage() {
               <SpendingStep
                 spending={form.spending}
                 totalSpend={totalSpend}
+                detectedArchetype={detectedArchetype}
                 error={errors.spending}
                 onChange={updateSpending}
               />
@@ -230,6 +242,7 @@ export default function RecommendPage() {
                 selectedRewards={form.selectedRewards}
                 incomeRange={form.incomeRange}
                 currentCards={form.currentCards}
+                selectedArchetype={selectedArchetype}
                 rewardsError={errors.rewards}
                 incomeError={errors.income}
                 onRewardsChange={(v) => {
@@ -242,6 +255,9 @@ export default function RecommendPage() {
                 }}
                 onCardsChange={(v) =>
                   setForm((p) => ({ ...p, currentCards: v }))
+                }
+                onArchetypeChange={(value) =>
+                  setForm((p) => ({ ...p, selectedArchetype: value }))
                 }
               />
             </div>

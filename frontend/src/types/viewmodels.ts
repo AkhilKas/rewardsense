@@ -21,6 +21,10 @@ export interface RecommendationResultViewModel {
   cards: RecommendationCardViewModel[];
   modelVersion: string;
   latencyMs: number;
+  activePersonas: string[];
+  personaContext: string;
+  recommendedForLabel: string;
+  recommendedForEmoji: string;
 }
 
 export interface QuickCardViewModel {

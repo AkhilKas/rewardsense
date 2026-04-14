@@ -49,6 +49,10 @@ export interface PredictionResponse {
   recommended_cards: RecommendedCard[];
   model_version: string;
   inference_latency_ms: number;
+  active_personas?: string[];
+  persona_context?: string;
+  recommended_for_label?: string;
+  recommended_for_emoji?: string;
 }
 
 export interface HealthResponse {
@@ -190,6 +194,7 @@ export interface PortfolioRecommendRequest {
   spending_categories: Record<string, number>;
   monthly_spend?: number;
   use_full_catalog?: boolean;
+  personas?: string[];
 }
 
 export interface TransactionRecommendRequest {

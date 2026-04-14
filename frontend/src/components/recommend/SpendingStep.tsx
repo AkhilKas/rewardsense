@@ -1,10 +1,17 @@
+import { useEffect, useState } from "react";
 import Card from "../Card";
 import SliderInput from "../SliderInput";
-import { SPENDING_CATEGORIES, type CategoryKey } from "./constants";
+import {
+  ARCHETYPE_META,
+  SPENDING_CATEGORIES,
+  type CategoryKey,
+  type FrontendArchetype,
+} from "./constants";
 
 interface SpendingStepProps {
   spending: Record<CategoryKey, number>;
   totalSpend: number;
+  detectedArchetype: FrontendArchetype;
   error?: string;
   onChange: (key: CategoryKey, value: number) => void;
 }
@@ -12,9 +19,26 @@ interface SpendingStepProps {
 export default function SpendingStep({
   spending,
   totalSpend,
+  detectedArchetype,
   error,
   onChange,
 }: SpendingStepProps) {
+  const [visibleArchetype, setVisibleArchetype] =
+    useState<FrontendArchetype>(detectedArchetype);
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    if (detectedArchetype === visibleArchetype) return;
+    setIsVisible(false);
+    const swapTimer = window.setTimeout(() => {
+      setVisibleArchetype(detectedArchetype);
+      setIsVisible(true);
+    }, 140);
+    return () => window.clearTimeout(swapTimer);
+  }, [detectedArchetype, visibleArchetype]);
+
+  const archetypeMeta = ARCHETYPE_META[visibleArchetype];
+
   return (
     <Card>
       <h2 className="text-lg font-semibold text-secondary mb-1">
@@ -44,6 +68,19 @@ export default function SpendingStep({
         <span className="text-lg font-bold text-primary">
           ${totalSpend.toLocaleString()}
         </span>
+      </div>
+      <div className="mt-3">
+        <div
+          className={`inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 dark:bg-primary/15 px-3 py-1.5 text-xs font-medium text-secondary transition-all duration-150 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-0.5"
+          }`}
+          aria-live="polite"
+        >
+          <span>{archetypeMeta.emoji}</span>
+          <span>
+            Your profile: <span className="font-semibold">{archetypeMeta.label}</span>
+          </span>
+        </div>
       </div>
 
       {error && (

@@ -37,6 +37,7 @@ from src.app.users.schemas import (
     ScoredCard,
     TransactionRecommendRequest,
     UserProfileResponse,
+    VALID_PERSONAS,
 )
 
 router = APIRouter(tags=["users"])
@@ -579,8 +580,7 @@ def _build_card_explanation(
         if missing_cats:
             label = "#2" if len(missing_cats) > 1 else ""
             con2 = (
-                f"No bonus rate for {missing_cats[0]}"
-                f" — your {label} spending category"
+                f"No bonus rate for {missing_cats[0]} — your {label} spending category"
             )
         else:
             con2 = "Rewards value depends on how you redeem points"
@@ -764,6 +764,17 @@ def recommend_portfolio(
     *new* card suggestions are returned.
     """
     profile = service.get_profile(db, current_user)
+    if payload.personas is not None:
+        unknown_personas = sorted(set(payload.personas) - VALID_PERSONAS)
+        if unknown_personas:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unknown persona(s): {unknown_personas}. "
+                f"Valid options: {sorted(VALID_PERSONAS)}",
+            )
+        active_personas = sorted(set(payload.personas))
+    else:
+        active_personas = profile.personas
     saved_ids = set(profile.saved_card_ids)
 
     if payload.use_full_catalog or len(saved_ids) == 0:
@@ -800,7 +811,7 @@ def recommend_portfolio(
     return _run_recommendation(
         portfolio=portfolio,
         transaction=transaction,
-        active_personas=profile.personas,
+        active_personas=active_personas,
         is_generic=is_generic,
         monthly_spend=monthly_spend,
         spending_categories=categories or None,

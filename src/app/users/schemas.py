@@ -113,6 +113,7 @@ class PortfolioRecommendRequest(BaseModel):
     spending_categories: Optional[Dict[str, float]] = None
     monthly_spend: float = 0.0
     use_full_catalog: bool = False
+    personas: Optional[List[str]] = None
 
 
 class TransactionRecommendRequest(BaseModel):

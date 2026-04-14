@@ -1,4 +1,4 @@
-import type { CategoryKey } from "./constants";
+import type { CategoryKey, FrontendArchetype } from "./constants";
 import { INITIAL_SPENDING } from "./constants";
 
 export type WizardStep = 1 | 2 | 3;
@@ -8,6 +8,7 @@ export interface WizardFormState {
   selectedRewards: string[];
   incomeRange: string;
   currentCards: string[];
+  selectedArchetype: FrontendArchetype | null;
 }
 
 export function createInitialWizardState(): WizardFormState {
@@ -16,5 +17,6 @@ export function createInitialWizardState(): WizardFormState {
     selectedRewards: [],
     incomeRange: "",
     currentCards: [],
+    selectedArchetype: null,
   };
 }
