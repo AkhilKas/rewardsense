@@ -248,7 +248,13 @@ def _load_catalog_from_offers(path: Path) -> List[Dict[str, Any]]:
             continue
 
         raw_name = str(item.get("card_name") or item.get("name") or "").strip()
-        if not raw_name or raw_name.lower().startswith("best for:"):
+        # Skip empty names and NerdWallet category-label entries that are not
+        # real cards (e.g. "Our pick for: X", "2026Best...", "Best for: Y").
+        _name_lower = raw_name.lower()
+        if not raw_name or any(
+            _name_lower.startswith(p)
+            for p in ("best for:", "our pick for:", "2026best", "best credit card")
+        ):
             continue
 
         # Try to get reward_rates from enriched data first, fall back to base_reward_rate
