@@ -327,18 +327,273 @@ def _fetch_catalog_from_gcs(dest: Path) -> bool:
         return False
 
 
+def _norm(s: str) -> str:
+    """Strip non-alphanumeric characters and lowercase for deduplication."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _issuer_tokens(issuer: str) -> set:  # type: ignore[type-arg]
+    """Split issuer string into tokens for overlap comparison.
+
+    Handles format differences such as "AMERICAN_EXPRESS" vs "American Express".
+    """
+    return set(re.split(r"[^a-z0-9]+", _norm(issuer))) - {""}
+
+
+def _names_overlap(p_name: str, c_name: str) -> bool:
+    """True if the pipeline card name is a contained-within or equal variant of the curated name.
+
+    Uses a length-ratio guard to prevent false positives where the pipeline name
+    is nearly as long as the curated name — e.g. "Capital One Venture" (16 chars)
+    matching "Capital One Venture X" (17 chars) would be a different card, not a
+    duplicate. Threshold 0.85 lets through true subsets like "Gold" (4) inside
+    "Amex Gold Card" (12) while blocking near-identical names with a minor suffix.
+    """
+    if p_name == c_name:
+        return True
+    if p_name in c_name:
+        return len(p_name) / len(c_name) < 0.85
+    return False
+
+
+def _pipeline_shadowed_by_curated(
+    pipeline_card: Dict[str, Any],
+    curated_index: Dict[str, Dict[str, Any]],
+) -> bool:
+    """Return True if a pipeline card is a duplicate of a curated entry.
+
+    Requires both issuer-token overlap AND name containment with ratio guard.
+    """
+    p_name = _norm(str(pipeline_card.get("card_name", "")))
+    if not p_name:
+        return False
+    p_tokens = _issuer_tokens(str(pipeline_card.get("issuer", "")))
+
+    for curated in curated_index.values():
+        c_tokens = _issuer_tokens(str(curated.get("issuer", "")))
+        if not (p_tokens & c_tokens):
+            continue
+        c_name = _norm(str(curated.get("card_name", "")))
+        if _names_overlap(p_name, c_name):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Gemini reward-rate enrichment (client-side, cached)
+# ---------------------------------------------------------------------------
+
+_ENRICHMENT_CACHE_PATH = (
+    _REPO_ROOT
+    / "data"
+    / "processed"
+    / "current"
+    / "offers"
+    / "enriched_rates_cache.json"
+)
+
+_VALID_BONUS_CATEGORIES = {
+    "dining",
+    "groceries",
+    "travel",
+    "gas",
+    "streaming",
+    "entertainment",
+    "online_shopping",
+    "drugstore",
+}
+
+_GEMINI_REWARD_SYSTEM_PROMPT = (
+    "You are a credit card rewards data API. "
+    "Given a card name and issuer, return ONLY a JSON object with the card's "
+    "current reward rates using this exact schema:\n"
+    '{"universal_base_rate": <float>, "category_bonuses": {"<category>": <float>}}\n'
+    "universal_base_rate is the flat earn rate on all other purchases as a percentage "
+    "(e.g. 1.5 means 1.5%). category_bonuses lists only categories where the card earns "
+    "above the base rate. "
+    f"Valid categories: {', '.join(sorted(_VALID_BONUS_CATEGORIES))}. "
+    "Return only the JSON object, no explanation, no markdown fences."
+)
+
+
+def _fetch_reward_rates_from_gemini(
+    card_name: str, issuer: str
+) -> Optional[Dict[str, Any]]:
+    """Call Gemini 2.5 Flash to look up reward rates for a single card.
+
+    Returns a validated reward_rates dict or None on any failure.
+    """
+    try:
+        import google.auth
+        import json as _json
+        import urllib.request as _urllib
+        from google.auth.transport.requests import Request as _Request
+
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        credentials.refresh(_Request())
+        token = credentials.token
+
+        project_id = os.getenv("GCP_PROJECT_ID", "rewardsense")
+        location = "us-central1"
+        endpoint = (
+            f"https://{location}-aiplatform.googleapis.com/v1/projects/"
+            f"{project_id}/locations/{location}/publishers/google/models/"
+            f"gemini-2.5-flash:generateContent"
+        )
+        payload = _json.dumps(
+            {
+                "systemInstruction": {
+                    "role": "system",
+                    "parts": [{"text": _GEMINI_REWARD_SYSTEM_PROMPT}],
+                },
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": f"Card: {card_name}\nIssuer: {issuer}"}],
+                    }
+                ],
+                "generationConfig": {"temperature": 0.0},
+            }
+        ).encode()
+
+        req = _urllib.Request(
+            endpoint,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with _urllib.urlopen(req, timeout=8) as resp:
+            body = _json.loads(resp.read())
+
+        raw_text = (
+            body.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        # Strip markdown fences if Gemini wraps in ```json ... ```
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+        result = _json.loads(raw_text)
+
+        # Validate structure and bounds
+        base = result.get("universal_base_rate")
+        bonuses = result.get("category_bonuses") or {}
+        if not (isinstance(base, (int, float)) and 0 < base <= 10):
+            return None
+        clean_bonuses = {
+            k: float(v)
+            for k, v in bonuses.items()
+            if k in _VALID_BONUS_CATEGORIES
+            and isinstance(v, (int, float))
+            and 0 < v <= 20
+        }
+        return {"universal_base_rate": float(base), "category_bonuses": clean_bonuses}
+
+    except Exception as exc:
+        logger.debug("Gemini reward lookup failed for %r: %s", card_name, exc)
+        return None
+
+
+def _enrich_missing_rates(
+    cards: List[Dict[str, Any]],
+    cache_path: Path = _ENRICHMENT_CACHE_PATH,
+) -> List[Dict[str, Any]]:
+    """Enrich any card that has no category_bonuses with a Gemini lookup.
+
+    Results are persisted to a local JSON cache so Gemini is called at most
+    once per card across restarts. In production the DAG already enriches
+    merged_cards.json before it reaches GCS, so this path is only exercised
+    in local dev when GCS is unavailable and un-enriched data is loaded.
+    """
+    # Load local cache
+    cache: Dict[str, Any] = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    result = []
+    cache_dirty = False
+
+    for card in cards:
+        rr = card.get("reward_rates") or {}
+
+        # ── Already has category bonuses → use as-is (API or DAG enrichment)
+        if isinstance(rr, dict) and rr.get("category_bonuses"):
+            result.append(card)
+            continue
+
+        card_id = card.get("card_id", "")
+
+        # ── Check local cache
+        if card_id in cache:
+            card = dict(card)
+            card["reward_rates"] = cache[card_id]
+            result.append(card)
+            continue
+
+        # ── Call Gemini for this card
+        enriched = _fetch_reward_rates_from_gemini(
+            card.get("card_name", ""), card.get("issuer", "")
+        )
+        if enriched:
+            card = dict(card)
+            card["reward_rates"] = enriched
+            cache[card_id] = enriched
+            cache_dirty = True
+            logger.debug(
+                "Gemini enriched %r: base=%.1f%%, bonuses=%s",
+                card.get("card_name"),
+                enriched["universal_base_rate"],
+                list(enriched.get("category_bonuses", {}).keys()),
+            )
+
+        result.append(card)
+
+    # Persist updated cache
+    if cache_dirty:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception as exc:
+            logger.warning("Could not write enrichment cache: %s", exc)
+
+    return result
+
+
 def load_card_catalog(
     catalog_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Load the full card catalog (pipeline + curated).
+    """Load the full card catalog using a three-layer hybrid strategy.
 
-    Resolution order:
-    1. Local merged_cards.json (CARD_CATALOG_PATH env var or default path)
-    2. GCS fetch if local file is absent and google-cloud-storage is available
-    3. 9 curated hardcoded cards as final fallback
+    Layer 1 — API source (merged_cards.json):
+        The creditcardbonuses API provides card discovery and metadata
+        (annual fees, network, image URLs, welcome bonuses). Category bonus
+        rates are often absent here.
 
-    Curated cards always override pipeline entries by card_id so hand-verified
-    category bonuses and key benefits take precedence.
+    Layer 2 — Gemini enrichment:
+        For any card that has no category_bonuses in its reward_rates, Gemini
+        2.5 Flash is called to look up the real reward structure. Results are
+        cached locally so Gemini is called at most once per card. In
+        production the DAG pre-enriches merged_cards.json before it reaches
+        GCS, so this layer is a local-dev fallback only.
+
+    Layer 3 — Curated cards (ground truth for top 9):
+        The 9 most popular cards are hand-verified and always override both
+        the API and Gemini data for their card_ids. Cards in the pipeline
+        that are duplicates of a curated card (same normalised issuer tokens
+        AND same normalised name) are dropped before the curated version is
+        inserted, preventing both from appearing in the catalog.
     """
     path = Path(
         catalog_path or os.getenv("CARD_CATALOG_PATH", str(DEFAULT_CATALOG_PATH))
@@ -349,10 +604,34 @@ def load_card_catalog(
 
     loaded_cards = _load_catalog_from_offers(path)
 
-    cards_by_id: Dict[str, Dict[str, Any]] = {
-        card["card_id"]: dict(card) for card in loaded_cards
+    # ── Layer 2: Gemini enrichment for cards missing category bonuses
+    # Disabled by default (ENRICH_CATALOG_ON_LOAD=false) because in production
+    # the DAG pre-enriches merged_cards.json before it reaches GCS, so calling
+    # Gemini at catalog load time would block uvicorn startup for 60+ seconds
+    # while enriching ~120 cards. Enable locally when GCS credentials are
+    # available but the GCS file hasn't been enriched by the DAG yet.
+    if os.getenv("ENRICH_CATALOG_ON_LOAD", "false").lower() in ("1", "true", "yes"):
+        loaded_cards = _enrich_missing_rates(loaded_cards)
+
+    # ── Layer 3 prep: build curated entries for duplicate detection
+    curated_index: Dict[str, Dict[str, Any]] = {
+        c["card_id"]: c for c in CURATED_CARD_CATALOG
     }
-    # Curated cards override scraped entries
+
+    cards_by_id: Dict[str, Dict[str, Any]] = {}
+    dropped = 0
+    for card in loaded_cards:
+        if _pipeline_shadowed_by_curated(card, curated_index):
+            dropped += 1
+            continue
+        cards_by_id[card["card_id"]] = dict(card)
+
+    if dropped:
+        logger.debug(
+            "Dropped %d pipeline cards that duplicate curated entries", dropped
+        )
+
+    # ── Layer 3: Curated cards always win for their card_ids
     for card in CURATED_CARD_CATALOG:
         cards_by_id[card["card_id"]] = dict(card)
 
