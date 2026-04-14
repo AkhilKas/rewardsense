@@ -9,16 +9,22 @@ import logging
 import os
 from typing import Any, Dict, Generator, List, Optional
 
-import pandas as pd
+from dotenv import load_dotenv
 
-from src.model_pipeline.llm import ExplanationGenerator, ExplanationType
-from src.model_pipeline.llm.validators import (
+load_dotenv()  # must run before any env-dependent imports
+
+import pandas as pd  # noqa: E402
+
+from src.model_pipeline.llm import ExplanationGenerator, ExplanationType  # noqa: E402
+from src.model_pipeline.llm.validators import (  # noqa: E402
     FactualAccuracyChecker,
     ReadabilityScorer,
 )
-from src.model_pipeline.personalization.personalized_scorer import PersonalizedScorer
-from src.model_pipeline.tracking import RewardSenseTracker
-from src.app.transactions.router import router as transactions_router
+from src.model_pipeline.personalization.personalized_scorer import (  # noqa: E402
+    PersonalizedScorer,
+)
+from src.model_pipeline.tracking import RewardSenseTracker  # noqa: E402
+from src.app.transactions.router import router as transactions_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -496,7 +502,6 @@ def create_app(service: Optional[RewardSenseService] = None) -> Any:
 
     _static_dir = _Path(os.getenv("STATIC_DIR", "/app/static"))
     if _static_dir.is_dir():
-        from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
 
         @app.get("/{full_path:path}")
