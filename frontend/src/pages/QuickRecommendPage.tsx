@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { recommendQuickTransaction } from "../api/client";
-import type { QuickRecommendationViewModel } from "../types/viewmodels";
+import { createTransaction, recommendQuickTransaction } from "../api/client";
+import type { TransactionCreateRequest } from "../types";
+import type { QuickCardViewModel, QuickRecommendationViewModel } from "../types/viewmodels";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import CardImage from "../components/CardImage";
@@ -17,6 +18,39 @@ const CATEGORY_OPTIONS = [
   "other",
 ];
 
+/** Matches `TransactionCreateRequest` in `src/app/transactions/schemas.py`. */
+function buildTransactionPayload(
+  merchantRaw: string,
+  amount: number,
+  categoryRaw: string,
+  card: QuickCardViewModel,
+): TransactionCreateRequest {
+  const merchant = merchantRaw.trim().slice(0, 200);
+  const category = (categoryRaw.trim().toLowerCase().slice(0, 50) || "other").slice(
+    0,
+    50,
+  );
+  const reward = Number(card.rewardAmount);
+  const rewardEarned = Number.isFinite(reward) && reward >= 0 ? reward : 0;
+  const savings = Number.isFinite(reward) ? reward : 0;
+
+  const payload: TransactionCreateRequest = {
+    merchant,
+    amount,
+    category,
+    reward_earned: rewardEarned,
+    estimated_savings: savings,
+    source_flow: "transaction",
+  };
+
+  const cid = card.id?.trim();
+  if (cid) payload.chosen_card_id = cid;
+  const cname = card.name?.trim();
+  if (cname) payload.chosen_card_name = cname;
+
+  return payload;
+}
+
 export default function QuickRecommendPage() {
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
@@ -24,6 +58,8 @@ export default function QuickRecommendPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<QuickRecommendationViewModel | null>(null);
+  const [logBusyId, setLogBusyId] = useState<string | null>(null);
+  const [logToast, setLogToast] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +86,39 @@ export default function QuickRecommendPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleLogTransaction(card: QuickCardViewModel) {
+    const numericAmount = Number(amount);
+    if (!merchant.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError("Enter a valid merchant and transaction amount before logging.");
+      return;
+    }
+    setError("");
+    setLogBusyId(card.id);
+    try {
+      const fromResult = (result?.categoryUsed ?? "").trim().toLowerCase();
+      const fromForm = category.trim().toLowerCase();
+      const categoryForTxn = fromResult || fromForm || "other";
+
+      await createTransaction(
+        buildTransactionPayload(merchant, numericAmount, categoryForTxn, card),
+      );
+      const amt = numericAmount.toLocaleString(undefined, {
+        style: "currency",
+        currency: "USD",
+      });
+      setLogToast(
+        `Transaction logged: ${amt} at ${merchant.trim()} on ${card.name}`,
+      );
+      window.setTimeout(() => setLogToast(null), 5000);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not log this transaction.",
+      );
+    } finally {
+      setLogBusyId(null);
     }
   }
 
@@ -123,6 +192,15 @@ export default function QuickRecommendPage() {
         </Card>
       )}
 
+      {logToast && (
+        <div
+          role="status"
+          className="rounded-md border border-accent/40 bg-accent/10 dark:bg-accent/15 px-4 py-3 text-sm text-secondary"
+        >
+          {logToast}
+        </div>
+      )}
+
       {result && !result.hasSavedCards && (
         <Card>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -156,7 +234,7 @@ export default function QuickRecommendPage() {
             {result.cards.map((card) => (
               <div
                 key={card.id}
-                className="rounded-lg border border-border p-3 flex items-center gap-3"
+                className="rounded-lg border border-border p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4"
               >
                 <CardImage
                   cardId={card.id}
@@ -172,6 +250,16 @@ export default function QuickRecommendPage() {
                     {card.annualFee.toFixed(2)}
                   </p>
                 </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0 self-start sm:self-center whitespace-normal text-left"
+                  loading={logBusyId === card.id}
+                  onClick={() => void handleLogTransaction(card)}
+                >
+                  Use this card — log transaction
+                </Button>
               </div>
             ))}
           </div>

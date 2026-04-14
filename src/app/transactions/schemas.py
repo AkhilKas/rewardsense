@@ -61,6 +61,12 @@ class TransactionListResponse(BaseModel):
     page: int
     page_size: int
     has_next: bool
+    total_rewards: float = Field(
+        description="Sum of reward_earned across all logged transactions for this user.",
+    )
+    total_savings: float = Field(
+        description="Sum of estimated_savings across all logged transactions for this user.",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -511,7 +511,7 @@ def recommend_transaction(
     profile = service.get_profile(db, current_user)
 
     is_generic = len(profile.saved_card_ids) == 0
-    card_ids = [c.card_id for c in _CATALOG] if is_generic else profile.saved_card_ids
+    card_ids = [c.card_id for c in _CATALOG]
     portfolio = _build_portfolio(card_ids)
 
     category = _resolve_category(payload.merchant, payload.category)

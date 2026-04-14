@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getTransactions, exportTransactions, createTransaction } from "../api/client";
+import { getTransactions, getSummary, exportTransactions, createTransaction } from "../api/client";
 import { getCardImage } from "../api/cardImages";
 import type { TransactionsResponse } from "../types";
 
@@ -44,8 +44,21 @@ function formatTime(iso: string): string {
   }
 }
 
+function formatMoney(n: number | undefined | null): string {
+  const v = Number(n);
+  return Number.isFinite(v) ? v.toFixed(2) : "0.00";
+}
+
+/** Ledger-wide totals (all transactions), from GET /summary — same math as Expense Summary. */
+type LedgerTotals = {
+  rewards: number;
+  savings: number;
+  transactionCount: number;
+};
+
 export default function TransactionHistoryPage() {
   const [data, setData] = useState<TransactionsResponse | null>(null);
+  const [ledgerTotals, setLedgerTotals] = useState<LedgerTotals | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,10 +73,19 @@ export default function TransactionHistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getTransactions(p, PAGE_SIZE);
-      setData(res);
+      const [txRes, summaryRes] = await Promise.all([
+        getTransactions(p, PAGE_SIZE),
+        getSummary(),
+      ]);
+      setData(txRes);
+      setLedgerTotals({
+        rewards: summaryRes.total_rewards,
+        savings: summaryRes.total_savings,
+        transactionCount: summaryRes.transaction_count,
+      });
       setPage(p);
     } catch (err: unknown) {
+      setLedgerTotals(null);
       setError(err instanceof Error ? err.message : "Failed to load transactions.");
     } finally {
       setLoading(false);
@@ -114,6 +136,13 @@ export default function TransactionHistoryPage() {
   }
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
+
+  const summaryRewards =
+    ledgerTotals?.rewards ?? data?.total_rewards ?? 0;
+  const summarySavings =
+    ledgerTotals?.savings ?? data?.total_savings ?? 0;
+  const summaryTxnCount =
+    ledgerTotals?.transactionCount ?? data?.total ?? 0;
 
   return (
     <div className="space-y-6">
@@ -257,6 +286,33 @@ export default function TransactionHistoryPage() {
       {/* Transaction list */}
       {!loading && data && data.total > 0 && (
         <>
+          <div className="rounded-xl border-2 border-primary/25 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent dark:from-primary/15 dark:via-primary/10 dark:to-transparent dark:border-primary/35 px-4 py-4 sm:px-6 shadow-sm">
+            <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-100 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-center gap-1 sm:gap-x-4 sm:gap-y-1 text-center">
+              <span>
+                Total Rewards:{" "}
+                <span className="font-mono tabular-nums text-green-700 dark:text-green-400">
+                  ${formatMoney(summaryRewards)}
+                </span>
+              </span>
+              <span className="hidden sm:inline text-slate-400 dark:text-slate-500 font-normal" aria-hidden>
+                |
+              </span>
+              <span>
+                Total Savings:{" "}
+                <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+                  ${formatMoney(summarySavings)}
+                </span>
+              </span>
+              <span className="hidden sm:inline text-slate-400 dark:text-slate-500 font-normal" aria-hidden>
+                |
+              </span>
+              <span>
+                Transactions:{" "}
+                <span className="font-mono tabular-nums text-slate-900 dark:text-white">{summaryTxnCount}</span>
+              </span>
+            </p>
+          </div>
+
           {/* Desktop table */}
           <div className="hidden md:block rounded-xl bg-card border border-border overflow-hidden">
             <table className="w-full text-sm">

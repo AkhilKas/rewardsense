@@ -299,11 +299,27 @@ export async function mockRecommendQuickTransaction(
   };
 }
 
+const MOCK_TXN_LEDGER_TOTAL = 84;
+
+function mockLedgerTotals(): { total_rewards: number; total_savings: number } {
+  let total_rewards = 0;
+  let total_savings = 0;
+  for (let k = 1; k <= MOCK_TXN_LEDGER_TOTAL; k++) {
+    total_rewards += Number((1.2 + k * 0.15).toFixed(2));
+    total_savings += Number((0.7 + k * 0.1).toFixed(2));
+  }
+  return {
+    total_rewards: Number(total_rewards.toFixed(2)),
+    total_savings: Number(total_savings.toFixed(2)),
+  };
+}
+
 export async function mockTransactions(
   page = 1,
   pageSize = 10,
 ): Promise<TransactionsResponse> {
   await delay(300);
+  const { total_rewards, total_savings } = mockLedgerTotals();
   const entries = Array.from({ length: pageSize }).map((_, i) => {
     const idx = (page - 1) * pageSize + i + 1;
     return {
@@ -315,7 +331,7 @@ export async function mockTransactions(
       chosen_card_name: ["Amex Gold Card", "Chase Sapphire Preferred", "Citi Double Cash"][idx % 3],
       reward_earned: Number((1.2 + idx * 0.15).toFixed(2)),
       estimated_savings: Number((0.7 + idx * 0.1).toFixed(2)),
-      source_flow: idx % 2 ? "quick_transaction" : "portfolio_recommendation",
+      source_flow: idx % 2 ? "transaction" : "portfolio_recommendation",
       card_was_saved: true,
       recommendation_event_id: null,
       timestamp: new Date(Date.now() - idx * 3600000).toISOString(),
@@ -323,10 +339,12 @@ export async function mockTransactions(
   });
   return {
     transactions: entries,
-    total: 84,
+    total: MOCK_TXN_LEDGER_TOTAL,
     page,
     page_size: pageSize,
-    has_next: page * pageSize < 84,
+    has_next: page * pageSize < MOCK_TXN_LEDGER_TOTAL,
+    total_rewards,
+    total_savings,
   };
 }
 
