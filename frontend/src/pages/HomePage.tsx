@@ -43,7 +43,7 @@ export default function HomePage() {
         </h1>
         <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
           RewardSense analyzes your spending habits and recommends the credit
-          cards that maximize your rewards — personalized just for you.
+          cards that maximize your rewards personalized just for you.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link to={ctaPath}>

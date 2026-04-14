@@ -1,0 +1,62 @@
+Epic 3: Automated CD Pipeline
+Owner: Member A Total Points: 13
+Story 3.1: GitHub Actions — Build & Push Container
+Story Points: 5
+
+Description: Extend the existing CI workflow with a CD stage that builds the serving Docker image and pushes it to Artifact Registry on merge to main.
+
+Tasks:
+
+Add a deploy job to .github/workflows/ci.yml (runs after test job passes)
+Authenticate to GCP using Workload Identity Federation (already set up) or service account key
+Build the serving Docker image with the commit SHA as the tag
+Push to us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:<sha>
+Also tag as latest
+Cache Docker layers for faster builds
+
+Acceptance Criteria:
+
+Every merge to main triggers a container build
+Image appears in Artifact Registry within 5 minutes of merge
+Build fails fast if tests fail (deploy job depends on test job)
+
+
+Story 3.2: GitHub Actions — Deploy to Cloud Run
+Story Points: 5
+
+Description: After pushing the container, automatically deploy the new image to the Cloud Run serving service.
+
+Tasks:
+
+Add a gcloud run deploy step after the container push
+Deploy with --image pointing to the newly pushed SHA tag
+Set --no-traffic initially, then switch traffic after health check passes
+Implement rollback: if the new revision's health check fails within 60 seconds, route traffic back to the previous revision
+Add a post-deploy step that runs the integration smoke test (Story 1.4)
+On success, send a Slack notification with the new model version and commit SHA
+
+Acceptance Criteria:
+
+New Cloud Run revision deployed automatically on merge to main
+Traffic only switches to new revision after health check passes
+Failed deployments automatically roll back
+Slack notification sent on successful deployment
+
+
+Story 3.3: Model-Triggered Redeployment
+Story Points: 3
+
+Description: When the model pipeline pushes a new model to the MLflow registry (Production stage), trigger a redeployment of the serving service to pick up the new model.
+
+Tasks:
+
+Option A: Add a final task to the Composer model pipeline DAG that calls the GitHub Actions API to trigger the deploy workflow
+Option B: Set up a Cloud Function triggered by a Pub/Sub message from the model pipeline DAG's last task
+The redeployment rebuilds the container (model is loaded at startup from MLflow, so a restart is sufficient)
+Log the redeployment trigger source (manual push vs. model pipeline vs. retrain pipeline)
+
+Acceptance Criteria:
+
+New Production model in MLflow → serving service restarts within 10 minutes
+Redeployment uses the same rollback safety as Story 3.2
+Audit log shows which event triggered each redeployment
