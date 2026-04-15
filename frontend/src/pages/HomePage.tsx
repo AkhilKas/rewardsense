@@ -87,6 +87,39 @@ const HERO_STATS = [
   { label: "Seconds", value: 30, prefix: "< " },
 ];
 
+const HERO_FAN_CARDS = [
+  {
+    id: "hero-1",
+    name: "Sapphire Preferred",
+    score: "93%",
+    cardClass: "hero-fan-card-1",
+  },
+  {
+    id: "hero-2",
+    name: "Gold Card",
+    score: "87%",
+    cardClass: "hero-fan-card-2",
+  },
+  {
+    id: "hero-3",
+    name: "Obsidian Elite",
+    score: "82%",
+    cardClass: "hero-fan-card-3",
+  },
+  {
+    id: "hero-4",
+    name: "Venture X",
+    score: "78%",
+    cardClass: "hero-fan-card-4",
+  },
+  {
+    id: "hero-5",
+    name: "Redline Cash",
+    score: "75%",
+    cardClass: "hero-fan-card-5",
+  },
+] as const;
+
 function usePrefersReducedMotion() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
@@ -153,6 +186,50 @@ function AnimatedStat({
   );
 }
 
+function HeroCardFan() {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [isFanReady, setIsFanReady] = useState(prefersReducedMotion);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setIsFanReady(true);
+      return;
+    }
+    setIsFanReady(false);
+    const id = window.setTimeout(() => setIsFanReady(true), 300);
+    return () => window.clearTimeout(id);
+  }, [prefersReducedMotion]);
+
+  return (
+    <div className="hero-card-fan-shell">
+      <div className="hero-card-fan-glow" aria-hidden />
+      <div className={`hero-card-fan ${isFanReady ? "hero-card-fan-ready" : ""}`} aria-hidden>
+        <div className="hero-card-orbit-track">
+          {HERO_FAN_CARDS.map((card, index) => (
+            <article
+              key={card.id}
+              className={`hero-fan-card ${card.cardClass}`}
+              style={{ transitionDelay: `${index * 100}ms` }}
+            >
+              <div className="hero-fan-card-float">
+                <div className="hero-fan-card-overlay" />
+                <div className="hero-fan-card-chip" />
+                <div className="hero-fan-card-score">{card.score}</div>
+                <div className="hero-fan-card-number-lines">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <p className="hero-fan-card-name">{card.name}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HeroSection({ ctaPath }: { ctaPath: string }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [activeWordIndex, setActiveWordIndex] = useState(0);
@@ -173,49 +250,54 @@ function HeroSection({ ctaPath }: { ctaPath: string }) {
   );
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-surface via-card to-primary-light/35 px-6 py-14 text-center shadow-sm sm:px-10 sm:py-18 dark:border-border/80 dark:from-[#0a0a0a] dark:via-[#101010] dark:to-[#181818]">
-      <div className="relative z-10 mx-auto max-w-4xl">
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-secondary tracking-tight leading-[1.1] sm:leading-tight">
-          <span className="block">Find your perfect</span>
-          <span className="mt-1 block sm:mt-0.5 sm:whitespace-nowrap">
-            <span className="text-secondary">card for </span>
-            <span
-              key={activeWord}
-              className={`inline-block text-primary ${
-                prefersReducedMotion ? "" : "premium-text-swap"
-              }`}
+    <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-surface via-card to-primary-light/35 px-6 py-14 shadow-sm sm:px-10 sm:py-18 dark:border-border/80 dark:from-[#0a0a0a] dark:via-[#101010] dark:to-[#181818]">
+      <div className="relative z-10 mx-auto max-w-6xl">
+        <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:gap-10">
+          <div className="text-center lg:text-left">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-secondary tracking-tight leading-[1.1] sm:leading-tight">
+              <span className="block">Find your perfect</span>
+              <span className="mt-1 block sm:mt-0.5 sm:whitespace-nowrap">
+                <span className="text-secondary">card for </span>
+                <span
+                  key={activeWord}
+                  className={`inline-block text-primary ${
+                    prefersReducedMotion ? "" : "premium-text-swap"
+                  }`}
+                >
+                  {activeWord}
+                </span>
+              </span>
+            </h1>
+            <p className="mt-5 text-base sm:text-lg text-slate-700 dark:text-zinc-300 max-w-2xl mx-auto lg:mx-0">
+              Smart recommendations based on how you actually spend.
+            </p>
+
+            <div className="relative z-10 mt-8 flex items-center justify-center gap-4 lg:justify-start">
+              <Link to={ctaPath}>
+                <Button size="lg" className="premium-pulse-glow px-8">
+                  Get Started. It&apos;s Free
+                </Button>
+              </Link>
+            </div>
+
+            <div
+              ref={statsRef}
+              className="relative z-10 mx-auto mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3 lg:mx-0 lg:max-w-none"
             >
-              {activeWord}
-            </span>
-          </span>
-        </h1>
-        <p className="mt-5 text-base sm:text-lg text-slate-700 dark:text-zinc-300 max-w-2xl mx-auto">
-          Smart recommendations based on how you actually spend.
-        </p>
-      </div>
-
-      <div className="relative z-10 mt-8 flex items-center justify-center gap-4">
-        <Link to={ctaPath}>
-          <Button size="lg" className="premium-pulse-glow px-8">
-            Get Started. It&apos;s Free
-          </Button>
-        </Link>
-      </div>
-
-      <div
-        ref={statsRef}
-        className="relative z-10 mx-auto mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3"
-      >
-        {HERO_STATS.map((stat) => (
-          <AnimatedStat
-            key={stat.label}
-            value={stat.value}
-            label={stat.label}
-            prefix={stat.prefix}
-            suffix={stat.suffix}
-            shouldAnimate={statsVisible && !prefersReducedMotion}
-          />
-        ))}
+              {HERO_STATS.map((stat) => (
+                <AnimatedStat
+                  key={stat.label}
+                  value={stat.value}
+                  label={stat.label}
+                  prefix={stat.prefix}
+                  suffix={stat.suffix}
+                  shouldAnimate={statsVisible && !prefersReducedMotion}
+                />
+              ))}
+            </div>
+          </div>
+          <HeroCardFan />
+        </div>
       </div>
     </section>
   );
