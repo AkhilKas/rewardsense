@@ -28,7 +28,6 @@ import yaml
 # Import the module under test
 import src.data_pipeline.preprocessing.transform as tr
 
-
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------

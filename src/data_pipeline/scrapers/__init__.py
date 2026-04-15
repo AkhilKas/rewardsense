@@ -7,11 +7,11 @@ various sources including aggregators (NerdWallet) and direct issuers
 
 Usage:
     from data_pipeline.scrapers import NerdWalletScraper, ChaseScraper
-    
+
     # Scrape NerdWallet
     with NerdWalletScraper(rate_limit=2.0) as scraper:
         cards = scraper.scrape_all_cards()
-    
+
     # Scrape Chase
     with ChaseScraper() as scraper:
         chase_cards = scraper.scrape_all_cards()

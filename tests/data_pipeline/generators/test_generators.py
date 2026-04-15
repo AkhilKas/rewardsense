@@ -30,7 +30,6 @@ from src.data_pipeline.generators.config import (
 from src.data_pipeline.generators.transaction_generator import TransactionGenerator
 from src.data_pipeline.generators.user_profile_generator import UserProfileGenerator
 
-
 # =====================================================================
 # Fixtures
 # =====================================================================

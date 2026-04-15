@@ -18,7 +18,6 @@ Run with: pytest tests/dags/test_rewardsense_data_pipeline.py -v
 import pytest  # noqa: E402
 from airflow.models import DagBag  # noqa: E402
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================

@@ -260,7 +260,6 @@ def build_default_service() -> RewardSenseService:
 # ---------------------------------------------------------------------------
 from src.app.cards.catalog import CARD_CATALOG as _DEFAULT_CARDS  # noqa: E402
 
-
 if FASTAPI_AVAILABLE:
 
     class StrictBaseModel(BaseModel):

@@ -34,7 +34,6 @@ from src.monitoring.business_report_generator import (
     REPORTLAB_AVAILABLE,
 )
 
-
 # =====================================================================
 # Fixtures: synthetic inference log records
 # =====================================================================

@@ -9,7 +9,6 @@ import pytest
 import time
 from datetime import datetime
 
-
 # ── Golden Test Dataset ──────────────────────────────────────────────
 # Each case: (test_id, card, transaction, expected_reward)
 # Manually verified expected values serve as the ground truth.

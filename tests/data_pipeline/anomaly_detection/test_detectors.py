@@ -23,7 +23,6 @@ from src.data_pipeline.anomaly_detection.detectors import (
     AnomalySeverity,
 )
 
-
 # =====================================================================
 # Fixtures
 # =====================================================================

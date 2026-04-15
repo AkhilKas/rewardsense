@@ -22,7 +22,6 @@ from src.model_pipeline.llm.explanation_generator import (
     ExplanationQualityFilter,
 )
 
-
 SAMPLE_PORTFOLIO = [
     {
         "card_id": "chase_sapphire",

@@ -11,7 +11,6 @@ from .transaction_scorer import TransactionScorer
 from .card_ranker import CardRanker
 from .scoring_validator import ScoringValidator
 
-
 __all__ = [
     "RewardCalculator",
     "MerchantCategoryMapper",
