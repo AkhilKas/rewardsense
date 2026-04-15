@@ -1,7 +1,9 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import Badge from "../components/Badge";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import ScoreGauge from "../components/ScoreGauge";
 import { useAuth } from "../context/AuthContext";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
 
@@ -223,25 +225,77 @@ const PREVIEW_MOCK_CARDS = [
   {
     id: "1",
     rankClass: "preview-mock-card-1",
-    score: 93,
-    name: "Obsidian Rewards",
-    last4: "4829",
+    score: 93.6,
+    name: "Chase Sapphire Preferred",
+    issuer: "Chase",
+    annualFee: 95,
+    rewardRate: 2.8,
+    scoreBreakdown: { base: 71.4, boosted: 22.2 },
+    keyBenefits: [
+      "2x travel rewards",
+      "3x dining rewards",
+      "60k intro bonus",
+    ],
+    why: "Strong dining and travel value with a low annual fee for frequent spenders.",
   },
   {
     id: "2",
     rankClass: "preview-mock-card-2",
-    score: 87,
-    name: "Amber Travel",
-    last4: "7712",
+    score: 89.1,
+    name: "Amex Gold Card",
+    issuer: "American Express",
+    annualFee: 250,
+    rewardRate: 3.1,
+    scoreBreakdown: { base: 67.3, boosted: 21.8 },
+    keyBenefits: [
+      "4x dining rewards",
+      "4x U.S. supermarkets",
+      "Dining credits",
+    ],
+    why: "Top food and grocery earning rates offset the fee for high monthly spend.",
   },
   {
     id: "3",
     rankClass: "preview-mock-card-3",
-    score: 78,
-    name: "Vertex Cash",
-    last4: "3094",
+    score: 84.4,
+    name: "Capital One Venture X",
+    issuer: "Capital One",
+    annualFee: 395,
+    rewardRate: 2.4,
+    scoreBreakdown: { base: 63.1, boosted: 21.3 },
+    keyBenefits: [
+      "10k anniversary miles",
+      "$300 travel credit",
+      "Lounge access",
+    ],
+    why: "Premium travel perks and simple 2x miles provide high long-term value.",
   },
 ] as const;
+
+function ScoreBreakdownBarMini({
+  base,
+  boosted,
+}: {
+  base: number;
+  boosted: number;
+}) {
+  const total = base + boosted;
+  const basePct = total > 0 ? (base / total) * 100 : 50;
+  const boostPct = 100 - basePct;
+
+  return (
+    <div className="mt-2">
+      <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500 dark:text-zinc-500">
+        <span>Base {base.toFixed(1)}</span>
+        <span>Boost {boosted.toFixed(1)}</span>
+      </div>
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-border">
+        <div className="h-full bg-primary/75" style={{ width: `${basePct}%` }} />
+        <div className="h-full bg-accent/75" style={{ width: `${boostPct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 const LivePreviewSection = memo(function LivePreviewSection() {
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -301,48 +355,73 @@ const LivePreviewSection = memo(function LivePreviewSection() {
             </p>
           </div>
 
-          <div className="min-w-0 w-full -mt-2 -translate-x-1 sm:-mt-3 sm:-translate-x-2 md:-translate-x-2 lg:-mt-4 lg:-translate-x-3 xl:-translate-x-4">
+          <div className="min-w-0 w-full -mt-2 sm:-mt-3 lg:-mt-4">
             <div
-              className={`preview-mock-stack relative mx-auto w-full overflow-hidden rounded-2xl pb-10 pl-0 pr-3 pt-4 sm:pb-12 sm:pl-1 sm:pr-6 sm:pt-5 md:pb-14 md:pr-8 md:pt-6 ${
+              className={`preview-mock-stack relative mx-auto w-full overflow-hidden rounded-2xl pb-10 pl-0 pr-1 pt-4 sm:pb-12 sm:pr-2 sm:pt-5 md:pb-14 md:pr-3 md:pt-6 ${
                 revealActive ? "preview-mock-reveal-active" : ""
               } ${loopPulse ? "preview-mock-loop-active" : ""}`}
               aria-hidden
             >
-              <div className="flex min-h-[196px] min-w-max items-start justify-start -ml-5 pl-0 sm:min-h-[212px] sm:-ml-7 md:-ml-8">
+              <div className="flex min-h-[196px] min-w-max items-start justify-start -ml-2 pl-0 sm:min-h-[212px] sm:-ml-3 md:-ml-4">
               {PREVIEW_MOCK_CARDS.map((card, index) => (
                 <div
                   key={card.id}
-                  className={`preview-mock-card ${card.rankClass} relative w-[220px] shrink-0 rounded-2xl border border-border bg-card p-4 text-secondary shadow-lg sm:w-[248px] dark:border-primary/30 dark:bg-linear-to-br dark:from-[#1a1a1a] dark:via-[#141414] dark:to-[#0f0f0f] dark:shadow-lg ${
-                    index > 0 ? "-ml-9 sm:-ml-10" : ""
+                  className={`preview-mock-card ${card.rankClass} relative w-[210px] shrink-0 rounded-2xl border border-border bg-card p-3 text-secondary shadow-lg sm:w-[228px] sm:p-3.5 md:w-[240px] dark:border-primary/30 dark:bg-linear-to-br dark:from-[#1a1a1a] dark:via-[#141414] dark:to-[#0f0f0f] dark:shadow-lg ${
+                    index > 0 ? "-ml-6 sm:-ml-7 md:-ml-8" : ""
                   } ${index === 0 ? "z-30" : index === 1 ? "z-20" : "z-10"}`}
                 >
+                  {index === 0 ? (
+                    <Badge
+                      variant="success"
+                      className="absolute right-2 top-2 z-20 px-1.5 py-0 text-[9px]"
+                    >
+                      Top Pick
+                    </Badge>
+                  ) : null}
                   <div className="preview-mock-card-loop-inner h-full w-full rounded-[inherit]">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-8 w-10 shrink-0 rounded-md bg-primary/15 ring-1 ring-primary/30 dark:bg-primary/25 dark:ring-primary/40"
-                          aria-hidden
-                        />
-                        <div>
-                          <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">
-                            Recommended
-                          </p>
-                          <p className="text-sm font-semibold text-secondary">
+                    <div className="mb-2 flex items-start gap-2.5">
+                      <ScoreGauge score={card.score} size={42} strokeWidth={4} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 pr-14">
+                          <p className="truncate text-xs font-semibold text-secondary">
                             {card.name}
                           </p>
                         </div>
-                      </div>
-                      <div className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-bold tabular-nums text-primary ring-1 ring-primary/35 dark:bg-primary/20">
-                        {card.score}%
+                        <p className="mt-0.5 text-[10px] text-slate-500 dark:text-zinc-500">
+                          {card.issuer} • ${card.annualFee}/yr • {card.rewardRate}% avg
+                        </p>
                       </div>
                     </div>
-                    <div className="mt-4 flex items-center justify-between border-t border-border pt-3 dark:border-white/10">
-                      <span className="font-mono text-xs tracking-widest text-slate-600 dark:text-zinc-400">
-                        •••• {card.last4}
-                      </span>
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+
+                    <ScoreBreakdownBarMini
+                      base={card.scoreBreakdown.base}
+                      boosted={card.scoreBreakdown.boosted}
+                    />
+
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {card.keyBenefits.map((benefit) => (
+                        <Badge key={benefit} variant="info" className="px-1.5 py-0 text-[9px]">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 rounded-lg border border-border/80 bg-surface/80 p-2 dark:bg-surface/60">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-secondary/80">
+                        Why this card?
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-slate-600 dark:text-zinc-400">
+                        {card.why}
+                      </p>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between border-t border-border/80 pt-1.5">
+                      <span className="text-[10px] text-slate-500 dark:text-zinc-500">
                         Match score
                       </span>
+                      <p className="text-xs font-bold tabular-nums text-primary">
+                        {card.score.toFixed(1)}
+                      </p>
                     </div>
                   </div>
                 </div>
