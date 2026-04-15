@@ -353,6 +353,10 @@ export default function ResultsPage() {
             {results.cards.length} cards ranked &middot; analyzed
             in {results.latencyMs}ms
           </p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 dark:bg-primary/15 px-3 py-1 text-xs font-medium text-secondary">
+            <span>{results.recommendedForEmoji}</span>
+            <span>Recommended for: {results.recommendedForLabel}</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* View toggle */}
@@ -387,6 +391,13 @@ export default function ResultsPage() {
       </div>
 
       {/* Content */}
+      {results.personaContext ? (
+        <div className="mb-4 rounded-lg border border-amber-300/40 bg-amber-50/80 dark:bg-amber-900/20 dark:border-amber-700/40 px-4 py-3">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            Persona influence: {results.personaContext}
+          </p>
+        </div>
+      ) : null}
       {view === "cards" ? (
         <CardView cards={results.cards} />
       ) : (

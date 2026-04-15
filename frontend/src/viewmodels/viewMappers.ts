@@ -4,6 +4,10 @@ import type {
   PredictionResponse,
   QuickTransactionResponse,
 } from "../types";
+import {
+  ARCHETYPE_META,
+  type FrontendArchetype,
+} from "../components/recommend/constants";
 import type {
   QuickRecommendationViewModel,
   RecommendationResultViewModel,
@@ -14,11 +18,16 @@ export function mapPortfolioToPredictionResponse(params: {
   catalog: CardCatalogItem[];
   totalSpend: number;
   latencyMs: number;
+  selectedArchetype: FrontendArchetype;
 }): PredictionResponse {
-  const { portfolio, catalog, totalSpend, latencyMs } = params;
+  const { portfolio, catalog, totalSpend, latencyMs, selectedArchetype } = params;
   const catalogById = new Map<string, CardCatalogItem>(
     catalog.map((c) => [c.card_id, c]),
   );
+  const archetypeMeta = ARCHETYPE_META[selectedArchetype];
+  const personaHint = portfolio.persona_context
+    ? ` Persona influence: ${portfolio.persona_context}`
+    : "";
   // Prefer cards that produce positive net rewards for cleaner UX.
   // If all cards are non-positive, fall back to full ranked list.
   const rankedForDisplay = portfolio.ranked.filter((c) => c.reward_amount > 0);
@@ -51,7 +60,7 @@ export function mapPortfolioToPredictionResponse(params: {
         issuer,
         score: Math.round(((card.reward_amount - minReward) / rewardRange) * 100),
         rank: displayRank,
-        explanation: card.explanation || fallbackExplanation,
+        explanation: `${card.explanation || fallbackExplanation}${personaHint}`,
         pros: card.pros ?? [],
         cons: card.cons ?? [],
         best_for: card.best_for ?? "",
@@ -72,6 +81,10 @@ export function mapPortfolioToPredictionResponse(params: {
     }),
     model_version: portfolio.is_personalized ? "app-persona-v1" : "app-generic-v1",
     inference_latency_ms: latencyMs,
+    active_personas: portfolio.active_personas,
+    persona_context: portfolio.persona_context,
+    recommended_for_label: archetypeMeta.label,
+    recommended_for_emoji: archetypeMeta.emoji,
   };
 }
 
@@ -81,6 +94,10 @@ export function mapPredictionToRecommendationVM(
   return {
     modelVersion: response.model_version,
     latencyMs: response.inference_latency_ms,
+    activePersonas: response.active_personas ?? [],
+    personaContext: response.persona_context ?? "",
+    recommendedForLabel: response.recommended_for_label ?? "Your profile",
+    recommendedForEmoji: response.recommended_for_emoji ?? "💳",
     cards: response.recommended_cards.map((card, index) => ({
       id: `${card.card_name}-${card.rank}-${index}`,
       name: card.card_name,

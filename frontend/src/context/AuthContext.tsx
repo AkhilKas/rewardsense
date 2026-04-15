@@ -22,6 +22,7 @@ interface AuthUser {
   email: string;
   dark_mode: boolean;
   reward_preference: string;
+  saved_card_ids: string[];
 }
 
 interface AuthContextValue {
@@ -58,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: profile.email,
       dark_mode: profile.dark_mode,
       reward_preference: profile.reward_preference,
+      saved_card_ids: profile.saved_card_ids ?? [],
     };
   }
 

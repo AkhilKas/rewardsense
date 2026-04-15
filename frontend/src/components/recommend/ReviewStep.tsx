@@ -1,6 +1,11 @@
 import Card from "../Card";
 import Button from "../Button";
-import { INCOME_RANGES, REWARD_TYPES, SPENDING_CATEGORIES } from "./constants";
+import {
+  ARCHETYPE_META,
+  INCOME_RANGES,
+  REWARD_TYPES,
+  SPENDING_CATEGORIES,
+} from "./constants";
 import type { WizardFormState, WizardStep } from "./wizardTypes";
 import type { CardCatalogItem } from "../../types";
 
@@ -45,6 +50,7 @@ export default function ReviewStep({
   const cardLabels = state.currentCards.map(
     (id) => catalogById.get(id)?.card_name ?? id,
   );
+  const archetypeMeta = ARCHETYPE_META[state.selectedArchetype ?? "cashback-generalist"];
 
   return (
     <div className="space-y-6">
@@ -123,6 +129,12 @@ export default function ReviewStep({
                 {state.incomeRange
                   ? labelMap(INCOME_RANGES, state.incomeRange)
                   : "—"}
+              </p>
+              <p>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Spending style:{" "}
+                </span>
+                {archetypeMeta.emoji} {archetypeMeta.label}
               </p>
               <p>
                 <span className="text-slate-500 dark:text-slate-400">
