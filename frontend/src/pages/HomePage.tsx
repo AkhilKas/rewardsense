@@ -82,7 +82,7 @@ const HOW_IT_WORKS_STEPS = [
 const HERO_WORDS = ["dining", "travel", "groceries", "everything"] as const;
 
 const HERO_STATS = [
-  { label: "Cards Analyzed", value: 9, suffix: "+" },
+  { label: "Cards Analyzed", value: 100, suffix: "+" },
   { label: "Step Process", value: 3, suffix: "" },
   { label: "Seconds", value: 30, prefix: "< " },
 ];
