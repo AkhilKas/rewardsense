@@ -138,13 +138,13 @@ function AnimatedStat({
   }, [durationMs, shouldAnimate, value]);
 
   return (
-    <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/50">
+    <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-border/70 dark:bg-card/60">
       <p className="font-mono text-xl sm:text-2xl font-semibold text-secondary">
         {prefix}
         {displayValue}
         {suffix}
       </p>
-      <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+      <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-zinc-400">
         {label}
       </p>
     </div>
@@ -171,23 +171,7 @@ function HeroSection({ ctaPath }: { ctaPath: string }) {
   );
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-surface via-card to-primary-light/35 px-6 py-14 text-center shadow-sm sm:px-10 sm:py-18 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-primary-light/20">
-      <div className="pointer-events-none absolute inset-0 -z-0">
-        <div className="premium-float absolute -left-14 top-8 h-36 w-56 rounded-2xl border border-primary/20 bg-primary/8 opacity-45 blur-[1px]" />
-        <div
-          className="premium-float absolute right-4 top-16 h-28 w-44 rounded-2xl border border-primary/20 bg-primary/10 opacity-50"
-          style={{ animationDelay: "1s" }}
-        />
-        <div
-          className="premium-float absolute -bottom-12 left-1/4 h-24 w-24 rounded-full border border-primary/20 bg-primary/10 opacity-40"
-          style={{ animationDelay: "2s" }}
-        />
-        <div
-          className="premium-float absolute bottom-10 right-1/5 h-20 w-20 rotate-12 rounded-xl border border-primary/20 bg-primary/10 opacity-45"
-          style={{ animationDelay: "3s" }}
-        />
-      </div>
-
+    <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-surface via-card to-primary-light/35 px-6 py-14 text-center shadow-sm sm:px-10 sm:py-18 dark:border-border/80 dark:from-[#0a0a0a] dark:via-[#101010] dark:to-[#181818]">
       <div className="relative z-10 mx-auto max-w-4xl">
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-secondary tracking-tight leading-[1.1] sm:leading-tight">
           <span className="block">Find your perfect</span>
@@ -203,7 +187,7 @@ function HeroSection({ ctaPath }: { ctaPath: string }) {
             </span>
           </span>
         </h1>
-        <p className="mt-5 text-base sm:text-lg text-slate-700 dark:text-slate-300 max-w-2xl mx-auto">
+        <p className="mt-5 text-base sm:text-lg text-slate-700 dark:text-zinc-300 max-w-2xl mx-auto">
           Smart recommendations based on how you actually spend.
         </p>
       </div>
@@ -299,7 +283,7 @@ const LivePreviewSection = memo(function LivePreviewSection() {
   return (
     <section
       ref={sectionRef}
-      className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-card via-surface to-primary-light/25 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-primary-light/15"
+      className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-card via-surface to-primary-light/25 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-border/80 dark:from-[#0a0a0a] dark:via-[#101010] dark:to-[#181818]"
     >
       <div className="mx-auto max-w-6xl">
         <p className="text-center text-xs font-semibold uppercase tracking-widest text-primary lg:text-left">
@@ -310,7 +294,7 @@ const LivePreviewSection = memo(function LivePreviewSection() {
             <h2 className="text-2xl font-bold text-secondary sm:text-3xl">
               Ranked cards, real math in seconds
             </h2>
-            <p className="mt-3 text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+            <p className="mt-3 text-sm text-slate-600 dark:text-zinc-400 sm:text-base">
               Your spending profile turns into a clear stack of matches with
               projected reward strength. The same flow you&apos;ll see after you
               sign up.
@@ -340,7 +324,7 @@ const LivePreviewSection = memo(function LivePreviewSection() {
                           aria-hidden
                         />
                         <div>
-                          <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                          <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">
                             Recommended
                           </p>
                           <p className="text-sm font-semibold text-secondary">
@@ -353,10 +337,10 @@ const LivePreviewSection = memo(function LivePreviewSection() {
                       </div>
                     </div>
                     <div className="mt-4 flex items-center justify-between border-t border-border pt-3 dark:border-white/10">
-                      <span className="font-mono text-xs tracking-widest text-slate-600 dark:text-slate-400">
+                      <span className="font-mono text-xs tracking-widest text-slate-600 dark:text-zinc-400">
                         •••• {card.last4}
                       </span>
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-500">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
                         Match score
                       </span>
                     </div>
@@ -380,12 +364,12 @@ const HowItWorksSection = memo(function HowItWorksSection() {
   return (
     <section
       ref={stepsRef}
-      className="rounded-3xl border border-border/70 bg-card/70 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:bg-slate-900/50"
+      className="rounded-3xl border border-border/70 bg-card/70 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-border/80 dark:bg-card/60"
     >
       <h2 className="text-center text-2xl sm:text-3xl font-bold text-secondary">
         How It Works
       </h2>
-      <p className="mx-auto mt-3 max-w-2xl text-center text-sm sm:text-base text-slate-600 dark:text-slate-400">
+      <p className="mx-auto mt-3 max-w-2xl text-center text-sm sm:text-base text-slate-600 dark:text-zinc-400">
         Three focused steps from your spending profile to your best card match.
       </p>
 
@@ -409,7 +393,7 @@ const HowItWorksSection = memo(function HowItWorksSection() {
           {HOW_IT_WORKS_STEPS.map((step, index) => (
             <Card
               key={step.step}
-              className={`step-card relative z-10 border border-border/80 bg-card/85 text-left shadow-sm backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-900/75 ${
+              className={`step-card relative z-10 border border-border/80 bg-card/85 text-left shadow-sm backdrop-blur-sm dark:border-border/80 dark:bg-card/80 ${
                 index === 0
                   ? "step-card-1"
                   : index === 1
@@ -426,7 +410,7 @@ const HowItWorksSection = memo(function HowItWorksSection() {
                 </div>
               </div>
               <h3 className="text-lg font-semibold text-secondary">{step.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-zinc-400">
                 {step.description}
               </p>
             </Card>
@@ -546,7 +530,7 @@ const TrustSection = memo(function TrustSection() {
   return (
     <section
       ref={sectionRef}
-      className={`rounded-3xl border border-border/70 bg-card/80 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:bg-slate-900/45 ${
+      className={`rounded-3xl border border-border/70 bg-card/80 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-border/80 dark:bg-card/55 ${
         isVisible ? "trust-section-visible" : ""
       }`}
     >
@@ -555,7 +539,7 @@ const TrustSection = memo(function TrustSection() {
           {TRUST_BADGES.map((badge, index) => (
             <div
               key={badge.id}
-              className={`trust-badge flex items-center gap-3 rounded-xl border border-border/80 bg-surface/80 px-4 py-3 dark:border-slate-700/80 dark:bg-slate-950/50 ${
+              className={`trust-badge flex items-center gap-3 rounded-xl border border-border/80 bg-surface/80 px-4 py-3 dark:border-border/80 dark:bg-surface/70 ${
                 index === 0
                   ? "trust-badge-1"
                   : index === 1
@@ -602,7 +586,7 @@ const TrustSection = memo(function TrustSection() {
                   </span>
                 </div>
               </blockquote>
-              <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
+              <p className="mt-4 text-center text-sm text-slate-600 dark:text-zinc-400">
                 {active.attribution}
               </p>
             </div>
@@ -620,10 +604,10 @@ const TrustSection = memo(function TrustSection() {
                 role="tab"
                 aria-selected={i === testimonialIndex}
                 aria-label={`Testimonial ${i + 1} of ${TESTIMONIALS.length}`}
-                className={`h-2 rounded-full transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                className={`h-2 rounded-full transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-[#0f0f0f] ${
                   i === testimonialIndex
                     ? "w-6 bg-primary"
-                    : "w-2 bg-slate-400/55 hover:bg-slate-400/80 dark:bg-slate-500/50 dark:hover:bg-slate-500/75"
+                    : "w-2 bg-slate-400/55 hover:bg-slate-400/80 dark:bg-white/25 dark:hover:bg-white/35"
                 }`}
                 onClick={() => {
                   setTestimonialIndex(i);
@@ -651,7 +635,7 @@ const FinalCtaSection = memo(function FinalCtaSection({
     <section
       ref={sectionRef}
       aria-labelledby="final-cta-heading"
-      className={`relative overflow-hidden rounded-3xl border border-primary/35 bg-linear-to-br from-[#faf9f7] via-[#f5f0eb] to-[#faf8f5] px-6 py-14 text-center shadow-xl shadow-primary/10 sm:px-10 sm:py-16 dark:border-primary/45 dark:from-slate-950 dark:via-[#0a0908] dark:to-slate-950 dark:shadow-primary/15 ${
+      className={`relative overflow-hidden rounded-3xl border border-primary/35 bg-linear-to-br from-[#faf9f7] via-[#f5f0eb] to-[#faf8f5] px-6 py-14 text-center shadow-xl shadow-primary/10 sm:px-10 sm:py-16 dark:border-primary/45 dark:from-[#0a0a0a] dark:via-[#101010] dark:to-[#181818] dark:shadow-primary/15 ${
         isVisible ? "final-cta-visible" : ""
       }`}
     >
@@ -675,7 +659,7 @@ const FinalCtaSection = memo(function FinalCtaSection({
         >
           Ready to Find Your Best Card?
         </h2>
-        <p className="mt-4 text-base leading-relaxed text-secondary sm:text-lg dark:text-slate-300">
+        <p className="mt-4 text-base leading-relaxed text-secondary sm:text-lg dark:text-zinc-300">
           Enter your spending profile and get personalized recommendations in
           seconds. Clear math, ranked matches, no endless comparison tabs.
         </p>
