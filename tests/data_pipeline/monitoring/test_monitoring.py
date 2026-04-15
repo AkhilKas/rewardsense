@@ -37,7 +37,6 @@ from data_pipeline.monitoring.callbacks import (
 from data_pipeline.monitoring.metrics import PipelineMetricsLogger
 from data_pipeline.monitoring.pipeline_report import PipelineReportGenerator
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================

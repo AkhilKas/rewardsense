@@ -118,3 +118,370 @@ input[type="range"]::-moz-range-thumb {
     opacity: 0;
   }
 }
+
+@keyframes premium-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* How It Works step cards — opacity + transform3d only (GPU-friendly) */
+@keyframes step-card-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes premium-float {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(8px, -14px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes premium-pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes premium-text-swap {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  88% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.premium-fade-up-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.premium-fade-up-enter.is-visible {
+  animation: premium-fade-up 0.7s ease-out forwards;
+}
+
+.premium-float {
+  animation: premium-float 8s ease-in-out infinite;
+}
+
+.premium-pulse-glow {
+  animation: premium-pulse-glow 2.8s ease-out infinite;
+}
+
+.premium-text-swap {
+  animation: premium-text-swap 0.5s ease-out;
+}
+
+.step-card {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+  will-change: opacity, transform;
+}
+
+.steps-reveal-active .step-card-1 {
+  animation: step-card-fade-up 0.6s ease-out 0ms forwards;
+}
+
+.steps-reveal-active .step-card-2 {
+  animation: step-card-fade-up 0.6s ease-out 300ms forwards;
+}
+
+.steps-reveal-active .step-card-3 {
+  animation: step-card-fade-up 0.6s ease-out 600ms forwards;
+}
+
+@keyframes premium-dash-flow {
+  from {
+    stroke-dashoffset: 18;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.premium-dash-flow {
+  stroke-dasharray: 6 6;
+  animation: premium-dash-flow 1.2s linear infinite;
+}
+
+/* Live preview — stacked mock cards (opacity + transform3d only) */
+@keyframes preview-mock-card-1 {
+  from {
+    opacity: 0;
+    transform: translate3d(56px, 0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(-3deg);
+  }
+}
+
+@keyframes preview-mock-card-2 {
+  from {
+    opacity: 0;
+    transform: translate3d(56px, 0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(4px, 7px, 0) rotate(2.5deg);
+  }
+}
+
+@keyframes preview-mock-card-3 {
+  from {
+    opacity: 0;
+    transform: translate3d(56px, 0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(12px, 14px, 0) rotate(-2deg);
+  }
+}
+
+.preview-mock-card {
+  opacity: 0;
+  transform: translate3d(56px, 0, 0);
+  will-change: opacity, transform;
+}
+
+.preview-mock-reveal-active .preview-mock-card-1 {
+  animation: preview-mock-card-1 0.65s ease-out 0ms forwards;
+}
+
+.preview-mock-reveal-active .preview-mock-card-2 {
+  animation: preview-mock-card-2 0.65s ease-out 200ms forwards;
+}
+
+.preview-mock-reveal-active .preview-mock-card-3 {
+  animation: preview-mock-card-3 0.65s ease-out 400ms forwards;
+}
+
+/* Live preview — subtle loop nudge (inner layer; outer keeps reveal transform) */
+@keyframes preview-mock-loop-nudge {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+  40% {
+    transform: translate3d(20px, 0, 0);
+    opacity: 0.88;
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+.preview-mock-card-loop-inner {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  will-change: transform, opacity;
+}
+
+.preview-mock-loop-active .preview-mock-card-1 .preview-mock-card-loop-inner {
+  animation: preview-mock-loop-nudge 0.85s cubic-bezier(0.45, 0, 0.25, 1) 0ms both;
+}
+
+.preview-mock-loop-active .preview-mock-card-2 .preview-mock-card-loop-inner {
+  animation: preview-mock-loop-nudge 0.85s cubic-bezier(0.45, 0, 0.25, 1) 180ms both;
+}
+
+.preview-mock-loop-active .preview-mock-card-3 .preview-mock-card-loop-inner {
+  animation: preview-mock-loop-nudge 0.85s cubic-bezier(0.45, 0, 0.25, 1) 360ms both;
+}
+
+/* Section 4 — trust badges + testimonial (opacity + transform3d) */
+@keyframes trust-badge-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes trust-testimonial-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.trust-badge {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  will-change: opacity, transform;
+}
+
+.trust-section-visible .trust-badge-1 {
+  animation: trust-badge-in 0.55s ease-out 0ms forwards;
+}
+
+.trust-section-visible .trust-badge-2 {
+  animation: trust-badge-in 0.55s ease-out 120ms forwards;
+}
+
+.trust-section-visible .trust-badge-3 {
+  animation: trust-badge-in 0.55s ease-out 240ms forwards;
+}
+
+.trust-testimonial-block {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+  will-change: opacity, transform;
+}
+
+.trust-section-visible .trust-testimonial-block {
+  animation: trust-testimonial-in 0.65s ease-out 400ms forwards;
+}
+
+/* Section 5 — final CTA (scroll reveal) */
+@keyframes final-cta-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.final-cta-block {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  will-change: opacity, transform;
+}
+
+.final-cta-visible .final-cta-block {
+  animation: final-cta-in 0.65s ease-out 80ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .premium-fade-up-enter {
+    opacity: 1;
+    transform: none;
+  }
+
+  .step-card,
+  .premium-dash-flow {
+    animation: none !important;
+  }
+
+  .step-card {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+
+  .preview-mock-card,
+  .preview-mock-reveal-active .preview-mock-card-1,
+  .preview-mock-reveal-active .preview-mock-card-2,
+  .preview-mock-reveal-active .preview-mock-card-3 {
+    animation: none !important;
+  }
+
+  .preview-mock-card-1 {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(-3deg);
+    will-change: auto;
+  }
+
+  .preview-mock-card-2 {
+    opacity: 1;
+    transform: translate3d(4px, 7px, 0) rotate(2.5deg);
+    will-change: auto;
+  }
+
+  .preview-mock-card-3 {
+    opacity: 1;
+    transform: translate3d(12px, 14px, 0) rotate(-2deg);
+    will-change: auto;
+  }
+
+  .preview-mock-card-loop-inner,
+  .preview-mock-loop-active .preview-mock-card-1 .preview-mock-card-loop-inner,
+  .preview-mock-loop-active .preview-mock-card-2 .preview-mock-card-loop-inner,
+  .preview-mock-loop-active .preview-mock-card-3 .preview-mock-card-loop-inner {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+
+  .trust-badge,
+  .trust-testimonial-block,
+  .trust-section-visible .trust-badge-1,
+  .trust-section-visible .trust-badge-2,
+  .trust-section-visible .trust-badge-3,
+  .trust-section-visible .trust-testimonial-block {
+    animation: none !important;
+  }
+
+  .trust-badge,
+  .trust-testimonial-block {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+
+  .final-cta-block,
+  .final-cta-visible .final-cta-block {
+    animation: none !important;
+  }
+
+  .final-cta-block {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+}

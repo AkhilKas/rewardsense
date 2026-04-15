@@ -5,7 +5,7 @@ Direct scrapers for major credit card issuers.
 
 Status:
     ✅ Chase - Working (BeautifulSoup)
-    ✅ Discover - Working (BeautifulSoup) 
+    ✅ Discover - Working (BeautifulSoup)
     ✅ Amex - Working (Selenium)
     ✅ Citi - Working (Selenium)
     ✅ Capital One - Working (Selenium)

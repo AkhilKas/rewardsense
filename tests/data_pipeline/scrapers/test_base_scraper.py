@@ -24,7 +24,6 @@ sys.path.insert(0, "src")
 
 from data_pipeline.scrapers.base_scraper import BaseScraper
 
-
 # =============================================================================
 # Concrete Implementation for Testing
 # =============================================================================

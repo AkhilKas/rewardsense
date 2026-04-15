@@ -13,7 +13,6 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Story 3.1 + 3.2: Transaction logging
 # ---------------------------------------------------------------------------

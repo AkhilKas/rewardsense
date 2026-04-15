@@ -49,7 +49,6 @@ from src.model_pipeline.bias.visualizations import (
     plot_group_metric_comparison,
 )
 
-
 # =====================================================================
 # Shared fixtures
 # =====================================================================

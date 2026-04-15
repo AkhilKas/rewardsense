@@ -1,34 +1,698 @@
+import { memo, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import { useAuth } from "../context/AuthContext";
+import { useScrollAnimation } from "../hooks/useScrollAnimation";
 
-const features = [
+const HOW_IT_WORKS_STEPS = [
   {
-    title: "Personalized Scoring",
+    step: "01",
+    title: "Tell us how you spend",
     description:
-      "Analyzes your spending patterns to rank cards specifically for you.",
-    iconSrc: "/icons/target.png",
+      "Use simple sliders to map your monthly spending across dining, travel, groceries, and more.",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-9 w-9 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <line x1="4" y1="7" x2="20" y2="7" />
+        <circle cx="9" cy="7" r="2.2" />
+        <line x1="4" y1="12" x2="20" y2="12" />
+        <circle cx="15" cy="12" r="2.2" />
+        <line x1="4" y1="17" x2="20" y2="17" />
+        <circle cx="11.5" cy="17" r="2.2" />
+      </svg>
+    ),
   },
   {
-    title: "Real-Time Recommendations",
+    step: "02",
+    title: "Pick your style",
     description:
-      "Get card rankings in seconds based on your unique spending profile.",
-    iconSrc: "/icons/bolt.png",
+      "Choose your spending archetype to match recommendations to your reward priorities and fee comfort.",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-9 w-9 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 19c1.8-3 4.4-4.5 7-4.5S17.2 16 19 19" />
+        <path d="M4 12l2-2 2 2M20 12l-2-2-2 2" />
+      </svg>
+    ),
   },
   {
-    title: "Clear Explanations",
+    step: "03",
+    title: "Get matched instantly",
     description:
-      "Understand why each card is recommended with clear, plain-language explanations.",
-    iconSrc: "/icons/bulb.png",
+      "See ranked card recommendations with clear projected reward outcomes in seconds.",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-9 w-9 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <rect x="3" y="5" width="18" height="14" rx="2.5" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+        <path d="M8 15h3M14 15h2" />
+      </svg>
+    ),
   },
-  {
-    title: "Always Up to Date",
-    description:
-      "Recommendations stay accurate over time as your spending habits evolve.",
-    iconSrc: "/icons/chart.png",
-  },
+] as const;
+
+const HERO_WORDS = ["dining", "travel", "groceries", "everything"] as const;
+
+const HERO_STATS = [
+  { label: "Cards Analyzed", value: 9, suffix: "+" },
+  { label: "Step Process", value: 3, suffix: "" },
+  { label: "Seconds", value: 30, prefix: "< " },
 ];
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+function AnimatedStat({
+  value,
+  label,
+  prefix = "",
+  suffix = "",
+  shouldAnimate,
+  durationMs = 1100,
+}: {
+  value: number;
+  label: string;
+  prefix?: string;
+  suffix?: string;
+  shouldAnimate: boolean;
+  durationMs?: number;
+}) {
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      setDisplayValue(value);
+      return;
+    }
+
+    let raf = 0;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / durationMs, 1);
+      setDisplayValue(Math.round(value * progress));
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(tick);
+      }
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [durationMs, shouldAnimate, value]);
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/50">
+      <p className="font-mono text-xl sm:text-2xl font-semibold text-secondary">
+        {prefix}
+        {displayValue}
+        {suffix}
+      </p>
+      <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function HeroSection({ ctaPath }: { ctaPath: string }) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [activeWordIndex, setActiveWordIndex] = useState(0);
+  const { ref: statsRef, isVisible: statsVisible } =
+    useScrollAnimation<HTMLDivElement>({ threshold: 0.35 });
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    const interval = window.setInterval(() => {
+      setActiveWordIndex((prev) => (prev + 1) % HERO_WORDS.length);
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [prefersReducedMotion]);
+
+  const activeWord = useMemo(
+    () => HERO_WORDS[activeWordIndex],
+    [activeWordIndex],
+  );
+
+  return (
+    <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-surface via-card to-primary-light/35 px-6 py-14 text-center shadow-sm sm:px-10 sm:py-18 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-primary-light/20">
+      <div className="pointer-events-none absolute inset-0 -z-0">
+        <div className="premium-float absolute -left-14 top-8 h-36 w-56 rounded-2xl border border-primary/20 bg-primary/8 opacity-45 blur-[1px]" />
+        <div
+          className="premium-float absolute right-4 top-16 h-28 w-44 rounded-2xl border border-primary/20 bg-primary/10 opacity-50"
+          style={{ animationDelay: "1s" }}
+        />
+        <div
+          className="premium-float absolute -bottom-12 left-1/4 h-24 w-24 rounded-full border border-primary/20 bg-primary/10 opacity-40"
+          style={{ animationDelay: "2s" }}
+        />
+        <div
+          className="premium-float absolute bottom-10 right-1/5 h-20 w-20 rotate-12 rounded-xl border border-primary/20 bg-primary/10 opacity-45"
+          style={{ animationDelay: "3s" }}
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-4xl">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-secondary tracking-tight leading-[1.1] sm:leading-tight">
+          <span className="block">Find your perfect</span>
+          <span className="mt-1 block sm:mt-0.5 sm:whitespace-nowrap">
+            <span className="text-secondary">card for </span>
+            <span
+              key={activeWord}
+              className={`inline-block text-primary ${
+                prefersReducedMotion ? "" : "premium-text-swap"
+              }`}
+            >
+              {activeWord}
+            </span>
+          </span>
+        </h1>
+        <p className="mt-5 text-base sm:text-lg text-slate-700 dark:text-slate-300 max-w-2xl mx-auto">
+          Smart recommendations based on how you actually spend.
+        </p>
+      </div>
+
+      <div className="relative z-10 mt-8 flex items-center justify-center gap-4">
+        <Link to={ctaPath}>
+          <Button size="lg" className="premium-pulse-glow px-8">
+            Get Started. It&apos;s Free
+          </Button>
+        </Link>
+      </div>
+
+      <div
+        ref={statsRef}
+        className="relative z-10 mx-auto mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3"
+      >
+        {HERO_STATS.map((stat) => (
+          <AnimatedStat
+            key={stat.label}
+            value={stat.value}
+            label={stat.label}
+            prefix={stat.prefix}
+            suffix={stat.suffix}
+            shouldAnimate={statsVisible && !prefersReducedMotion}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const PREVIEW_MOCK_CARDS = [
+  {
+    id: "1",
+    rankClass: "preview-mock-card-1",
+    score: 93,
+    name: "Obsidian Rewards",
+    last4: "4829",
+  },
+  {
+    id: "2",
+    rankClass: "preview-mock-card-2",
+    score: 87,
+    name: "Amber Travel",
+    last4: "7712",
+  },
+  {
+    id: "3",
+    rankClass: "preview-mock-card-3",
+    score: 78,
+    name: "Vertex Cash",
+    last4: "3094",
+  },
+] as const;
+
+const LivePreviewSection = memo(function LivePreviewSection() {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const { ref: sectionRef, isVisible: inViewport } = useScrollAnimation<HTMLElement>(
+    { threshold: 0.2, once: false },
+  );
+  const [revealActive, setRevealActive] = useState(false);
+  const [loopPulse, setLoopPulse] = useState(false);
+
+  useEffect(() => {
+    if (inViewport) setRevealActive(true);
+  }, [inViewport]);
+
+  useEffect(() => {
+    if (!inViewport || prefersReducedMotion) {
+      setLoopPulse(false);
+      return;
+    }
+
+    let intervalId = 0;
+    let pulseClearId = 0;
+
+    const triggerPulse = () => {
+      setLoopPulse(true);
+      pulseClearId = window.setTimeout(() => {
+        setLoopPulse(false);
+      }, 1280);
+    };
+
+    intervalId = window.setInterval(triggerPulse, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(pulseClearId);
+      setLoopPulse(false);
+    };
+  }, [inViewport, prefersReducedMotion]);
+
+  return (
+    <section
+      ref={sectionRef}
+      className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-card via-surface to-primary-light/25 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-primary-light/15"
+    >
+      <div className="mx-auto max-w-6xl">
+        <p className="text-center text-xs font-semibold uppercase tracking-widest text-primary lg:text-left">
+          Live preview
+        </p>
+        <div className="mt-2 grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+          <div className="min-w-0 text-center lg:text-left">
+            <h2 className="text-2xl font-bold text-secondary sm:text-3xl">
+              Ranked cards, real math in seconds
+            </h2>
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+              Your spending profile turns into a clear stack of matches with
+              projected reward strength. The same flow you&apos;ll see after you
+              sign up.
+            </p>
+          </div>
+
+          <div className="min-w-0 w-full -mt-2 -translate-x-1 sm:-mt-3 sm:-translate-x-2 md:-translate-x-2 lg:-mt-4 lg:-translate-x-3 xl:-translate-x-4">
+            <div
+              className={`preview-mock-stack relative mx-auto w-full overflow-hidden rounded-2xl pb-10 pl-0 pr-3 pt-4 sm:pb-12 sm:pl-1 sm:pr-6 sm:pt-5 md:pb-14 md:pr-8 md:pt-6 ${
+                revealActive ? "preview-mock-reveal-active" : ""
+              } ${loopPulse ? "preview-mock-loop-active" : ""}`}
+              aria-hidden
+            >
+              <div className="flex min-h-[196px] min-w-max items-start justify-start -ml-5 pl-0 sm:min-h-[212px] sm:-ml-7 md:-ml-8">
+              {PREVIEW_MOCK_CARDS.map((card, index) => (
+                <div
+                  key={card.id}
+                  className={`preview-mock-card ${card.rankClass} relative w-[220px] shrink-0 rounded-2xl border border-border bg-card p-4 text-secondary shadow-lg sm:w-[248px] dark:border-primary/30 dark:bg-linear-to-br dark:from-[#1a1a1a] dark:via-[#141414] dark:to-[#0f0f0f] dark:shadow-lg ${
+                    index > 0 ? "-ml-9 sm:-ml-10" : ""
+                  } ${index === 0 ? "z-30" : index === 1 ? "z-20" : "z-10"}`}
+                >
+                  <div className="preview-mock-card-loop-inner h-full w-full rounded-[inherit]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-8 w-10 shrink-0 rounded-md bg-primary/15 ring-1 ring-primary/30 dark:bg-primary/25 dark:ring-primary/40"
+                          aria-hidden
+                        />
+                        <div>
+                          <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Recommended
+                          </p>
+                          <p className="text-sm font-semibold text-secondary">
+                            {card.name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-bold tabular-nums text-primary ring-1 ring-primary/35 dark:bg-primary/20">
+                        {card.score}%
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between border-t border-border pt-3 dark:border-white/10">
+                      <span className="font-mono text-xs tracking-widest text-slate-600 dark:text-slate-400">
+                        •••• {card.last4}
+                      </span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-500">
+                        Match score
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+});
+
+const HowItWorksSection = memo(function HowItWorksSection() {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const { ref: stepsRef, isVisible: stepsVisible } =
+    useScrollAnimation<HTMLElement>({ threshold: 0.2 });
+
+  return (
+    <section
+      ref={stepsRef}
+      className="rounded-3xl border border-border/70 bg-card/70 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:bg-slate-900/50"
+    >
+      <h2 className="text-center text-2xl sm:text-3xl font-bold text-secondary">
+        How It Works
+      </h2>
+      <p className="mx-auto mt-3 max-w-2xl text-center text-sm sm:text-base text-slate-600 dark:text-slate-400">
+        Three focused steps from your spending profile to your best card match.
+      </p>
+
+      <div className="relative mt-10">
+        <div className="pointer-events-none absolute left-[16.66%] right-[16.66%] top-[3.1rem] hidden lg:block">
+          <svg viewBox="0 0 100 8" className="h-8 w-full" aria-hidden>
+            <path
+              d="M2 4 H98"
+              className={`fill-none stroke-primary/50 stroke-[1.5] ${
+                prefersReducedMotion ? "" : "premium-dash-flow"
+              }`}
+            />
+          </svg>
+        </div>
+
+        <div
+          className={`grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3 ${
+            stepsVisible ? "steps-reveal-active" : ""
+          }`}
+        >
+          {HOW_IT_WORKS_STEPS.map((step, index) => (
+            <Card
+              key={step.step}
+              className={`step-card relative z-10 border border-border/80 bg-card/85 text-left shadow-sm backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-900/75 ${
+                index === 0
+                  ? "step-card-1"
+                  : index === 1
+                  ? "step-card-2"
+                  : "step-card-3"
+              }`}
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-primary/60 bg-primary/10 text-sm font-bold tracking-wide text-primary">
+                  {step.step}
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
+                  {step.icon}
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-secondary">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                {step.description}
+              </p>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+});
+
+const TRUST_BADGES = [
+  {
+    id: "enc",
+    label: "256-bit Encrypted",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-6 w-6 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    id: "data",
+    label: "No Data Stored",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-6 w-6 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    ),
+  },
+  {
+    id: "ind",
+    label: "Independent Recommendations",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-6 w-6 text-primary"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M12 3l1.9 5.8h6.1l-5 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8-5-3.6h6.1z" />
+      </svg>
+    ),
+  },
+] as const;
+
+const TESTIMONIALS = [
+  {
+    quote: "I switched cards and saved $340 in my first year.",
+    attribution: "Jordan M.",
+  },
+  {
+    quote: "The 3-step wizard made it so easy. Got matched in under a minute.",
+    attribution: "Priya S.",
+  },
+  {
+    quote: "Finally understand why my old card was costing me money.",
+    attribution: "Marcus T.",
+  },
+  {
+    quote: "The travel card recommendation alone paid for two lounge visits.",
+    attribution: "Sarah K.",
+  },
+  {
+    quote: "Way better than scrolling through comparison sites for hours.",
+    attribution: "Alex R.",
+  },
+] as const;
+
+const TrustSection = memo(function TrustSection() {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const { ref: sectionRef, isVisible } = useScrollAnimation<HTMLElement>({
+    threshold: 0.2,
+  });
+  const [testimonialIndex, setTestimonialIndex] = useState(0);
+  const [quoteOpacity, setQuoteOpacity] = useState(1);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    const fadeMs = 300;
+    const id = window.setInterval(() => {
+      setQuoteOpacity(0);
+      window.setTimeout(() => {
+        setTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length);
+        setQuoteOpacity(1);
+      }, fadeMs);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [prefersReducedMotion]);
+
+  const active = TESTIMONIALS[testimonialIndex];
+
+  return (
+    <section
+      ref={sectionRef}
+      className={`rounded-3xl border border-border/70 bg-card/80 px-6 py-10 shadow-sm sm:px-8 sm:py-12 dark:border-slate-800/80 dark:bg-slate-900/45 ${
+        isVisible ? "trust-section-visible" : ""
+      }`}
+    >
+      <div className="mx-auto max-w-4xl">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5">
+          {TRUST_BADGES.map((badge, index) => (
+            <div
+              key={badge.id}
+              className={`trust-badge flex items-center gap-3 rounded-xl border border-border/80 bg-surface/80 px-4 py-3 dark:border-slate-700/80 dark:bg-slate-950/50 ${
+                index === 0
+                  ? "trust-badge-1"
+                  : index === 1
+                  ? "trust-badge-2"
+                  : "trust-badge-3"
+              }`}
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 dark:bg-primary/15">
+                {badge.icon}
+              </div>
+              <p className="text-sm font-medium leading-snug text-secondary">
+                {badge.label}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="trust-testimonial-block mx-auto mt-10 max-w-2xl sm:mt-12">
+          <div
+            className="min-h-[9rem] px-2 sm:min-h-[8rem] sm:px-6"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div
+              className="transition-opacity duration-300 ease-in-out"
+              style={{ opacity: quoteOpacity }}
+            >
+              <blockquote className="mx-auto max-w-xl">
+                <div className="relative text-lg leading-relaxed text-secondary sm:text-xl sm:leading-relaxed">
+                  <span
+                    className="pointer-events-none absolute left-0 top-0 z-0 font-serif text-[2.35rem] font-normal leading-[0.85] text-primary not-italic sm:text-[2.85rem]"
+                    aria-hidden
+                  >
+                    &ldquo;
+                  </span>
+                  <p className="relative z-[1] px-11 pb-12 pt-10 text-center font-medium sm:px-14 sm:pb-14 sm:pt-11">
+                    {active.quote}
+                  </p>
+                  <span
+                    className="pointer-events-none absolute bottom-0 right-0 z-0 font-serif text-[2.35rem] font-normal leading-[0.85] text-primary not-italic sm:text-[2.85rem]"
+                    aria-hidden
+                  >
+                    &rdquo;
+                  </span>
+                </div>
+              </blockquote>
+              <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
+                {active.attribution}
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="mt-6 flex justify-center gap-2"
+            role="tablist"
+            aria-label="Testimonial slides"
+          >
+            {TESTIMONIALS.map((_, i) => (
+              <button
+                key={`testimonial-dot-${i}`}
+                type="button"
+                role="tab"
+                aria-selected={i === testimonialIndex}
+                aria-label={`Testimonial ${i + 1} of ${TESTIMONIALS.length}`}
+                className={`h-2 rounded-full transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                  i === testimonialIndex
+                    ? "w-6 bg-primary"
+                    : "w-2 bg-slate-400/55 hover:bg-slate-400/80 dark:bg-slate-500/50 dark:hover:bg-slate-500/75"
+                }`}
+                onClick={() => {
+                  setTestimonialIndex(i);
+                  setQuoteOpacity(1);
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+});
+
+const FinalCtaSection = memo(function FinalCtaSection({
+  ctaPath,
+}: {
+  ctaPath: string;
+}) {
+  const { ref: sectionRef, isVisible } = useScrollAnimation<HTMLElement>({
+    threshold: 0.22,
+  });
+
+  return (
+    <section
+      ref={sectionRef}
+      aria-labelledby="final-cta-heading"
+      className={`relative overflow-hidden rounded-3xl border border-primary/35 bg-linear-to-br from-[#faf9f7] via-[#f5f0eb] to-[#faf8f5] px-6 py-14 text-center shadow-xl shadow-primary/10 sm:px-10 sm:py-16 dark:border-primary/45 dark:from-slate-950 dark:via-[#0a0908] dark:to-slate-950 dark:shadow-primary/15 ${
+        isVisible ? "final-cta-visible" : ""
+      }`}
+    >
+      <div className="pointer-events-none absolute inset-0 -z-0">
+        <div className="absolute -right-24 -top-28 h-72 w-72 rounded-full bg-primary/18 blur-3xl dark:bg-primary/18" />
+        <div className="absolute -bottom-32 -left-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl dark:bg-primary/12" />
+        <div
+          className="premium-float absolute bottom-14 right-[18%] hidden h-14 w-20 rounded-xl border border-primary/25 bg-primary/[0.08] opacity-70 sm:block dark:border-white/10 dark:bg-white/[0.06] dark:opacity-50"
+          style={{ animationDelay: "1.2s" }}
+          aria-hidden
+        />
+      </div>
+
+      <div className="final-cta-block relative z-10 mx-auto max-w-2xl">
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+          Start free
+        </p>
+        <h2
+          id="final-cta-heading"
+          className="mt-3 text-2xl font-bold tracking-tight text-secondary sm:text-3xl dark:text-white"
+        >
+          Ready to Find Your Best Card?
+        </h2>
+        <p className="mt-4 text-base leading-relaxed text-secondary sm:text-lg dark:text-slate-300">
+          Enter your spending profile and get personalized recommendations in
+          seconds. Clear math, ranked matches, no endless comparison tabs.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <Link to={ctaPath}>
+            <Button
+              size="lg"
+              className="premium-pulse-glow px-8 shadow-lg shadow-primary/25"
+            >
+              Get Started. It&apos;s Free
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+});
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
@@ -36,60 +700,11 @@ export default function HomePage() {
 
   return (
     <div className="space-y-16">
-      <section className="text-center pt-12 pb-4">
-        <h1 className="text-4xl sm:text-5xl font-bold text-secondary tracking-tight">
-          Find Your Perfect{" "}
-          <span className="text-primary">Credit Card</span>
-        </h1>
-        <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-          RewardSense analyzes your spending habits and recommends the credit
-          cards that maximize your rewards — personalized just for you.
-        </p>
-        <div className="mt-8 flex items-center justify-center gap-4">
-          <Link to={ctaPath}>
-            <Button size="lg">Get Recommendations</Button>
-          </Link>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-2xl font-bold text-secondary text-center mb-8">
-          How It Works
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((f) => (
-            <Card key={f.title} className="text-center">
-              <div className="flex justify-center mb-3">
-                <img src={f.iconSrc} alt={f.title} className="h-8 w-8 object-contain" />
-              </div>
-              <h3 className="font-semibold text-secondary mb-2">{f.title}</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                {f.description}
-              </p>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="text-center">
-        <Card
-          padding="lg"
-          className="bg-linear-to-br from-primary/5 to-accent/5 border-primary/20"
-        >
-          <h2 className="text-2xl font-bold text-secondary mb-3">
-            Ready to Find Your Best Card?
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Enter your spending profile and get personalized recommendations in
-            seconds.
-          </p>
-          <div className="mt-6">
-            <Link to={ctaPath}>
-              <Button size="lg">Get Started</Button>
-            </Link>
-          </div>
-        </Card>
-      </section>
+      <HeroSection ctaPath={ctaPath} />
+      <HowItWorksSection />
+      <LivePreviewSection />
+      <TrustSection />
+      <FinalCtaSection ctaPath={ctaPath} />
     </div>
   );
 }

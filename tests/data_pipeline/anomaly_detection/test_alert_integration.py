@@ -21,7 +21,6 @@ from src.data_pipeline.anomaly_detection.detectors import (
 )
 from src.data_pipeline.monitoring.alerting import Severity
 
-
 # =====================================================================
 # Fixtures
 # =====================================================================

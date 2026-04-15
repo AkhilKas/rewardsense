@@ -64,7 +64,6 @@ from .normalizer import normalize_creditcardbonuses_offer
 # -----------------------------------------------------------------------------
 from .schema import CardOffer
 
-
 __all__ = [
     # Base client
     "BaseAPIClient",

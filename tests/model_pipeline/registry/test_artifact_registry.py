@@ -20,7 +20,6 @@ from src.model_pipeline.registry.artifact_registry import (
     RegistryClient,
 )
 
-
 # =====================================================================
 # Fixtures
 # =====================================================================

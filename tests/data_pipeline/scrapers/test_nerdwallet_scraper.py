@@ -23,7 +23,6 @@ from data_pipeline.scrapers.nerdwallet_scraper import (
     NerdWalletSeleniumScraper,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================

@@ -33,7 +33,6 @@ from typing import Any, Dict, List
 
 import yaml
 
-
 _DEFAULT_CONFIG_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "config", "personas.yaml"
 )
