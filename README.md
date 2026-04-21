@@ -1,9 +1,12 @@
 # RewardSense
 
-**Cost-aware, explainable credit-card rewards platform with a two-phase MLOps lifecycle:**
+**Cost-aware, explainable credit-card rewards platform with a full three-phase MLOps lifecycle:**
 
 - **Phase 1:** Data pipeline (ingestion, transformation, validation, anomaly detection, versioning, monitoring)
 - **Phase 2:** Model pipeline (deterministic scoring, personalization ML, LLM explainability, fairness, CI/CD, registry)
+- **Phase 3:** Production deployment & platform expansion (Cloud Run serving API, React frontend, automated CD, model monitoring, drift-triggered retraining, user auth, feedback capture, LLM telemetry)
+
+> **Presented at the Google Cambridge office.** Demo video submitted.
 
 RewardSense solves credit-card reward optimization: recommending the best card per transaction, adapting by user behavior, and generating transparent explanation output for users and reviewers.
 
@@ -15,7 +18,8 @@ RewardSense solves credit-card reward optimization: recommending the best card p
 
 1. [Phase 1: Data Pipeline](#phase-1-data-pipeline)
 2. [Phase 2: Model Pipeline](#phase-2-model-pipeline)
-3. [Quick Navigation: Key Files](#quick-navigation-key-files)
+3. [Phase 3: Production Deployment & Platform Expansion](#phase-3-production-deployment--platform-expansion)
+4. [Quick Navigation: Key Files](#quick-navigation-key-files)
 
 ---
 
@@ -1498,3 +1502,794 @@ gcloud auth application-default login
 | Changelog source | `docs/model_changelog.md` |
 | Quality audit script | `scripts/model_pipeline_quality_audit.sh` |
 | Quality audit report source | `docs/model_pipeline_quality_audit_report.md` |
+| **Phase 3** | |
+| Serving API (FastAPI + auth + recommendations) | `src/app/server.py` |
+| Card catalog module (229+ cards) | `src/app/cards/catalog.py` |
+| User auth & wallet | `src/app/auth/`, `src/app/users/` |
+| Feedback capture | `src/app/feedback/` |
+| LLM telemetry | `src/app/telemetry/llm_telemetry.py` |
+| ORM models (User, FeedbackEvent, LLMTelemetryEvent) | `src/app/db/models.py` |
+| Monitoring DAG | `dags/rewardsense_monitoring_pipeline.py` |
+| Drift detector | `src/monitoring/drift_detector.py` |
+| Serving Dockerfile | `Dockerfile.serving` |
+| React frontend | `frontend/src/` |
+| FeedbackButtons component | `frontend/src/components/FeedbackButtons.tsx` |
+| Technical poster (HTML + PNG) | `poster/` |
+| Phase 3 implementation plan | `docs/Phase3_Deployment.md` |
+| Expansion plan | `docs/Phase3_Expansion_Plan.pdf` |
+
+---
+
+## Phase 3: Production Deployment & Platform Expansion
+
+Phase 3 takes the validated Phase 2 model pipeline and deploys it as a live, user-facing product on Google Cloud Platform. It adds a production-grade serving API on Cloud Run, an automated CI/CD pipeline, daily model monitoring with drift-triggered retraining, a full React frontend, and a complete user platform (auth, wallet, recommendations, transaction ledger, feedback capture, LLM telemetry).
+
+> **This project was successfully presented at the Google Cambridge office. The demo video has been submitted.**
+
+---
+
+### 1. What Phase 3 Delivers
+
+| Deliverable | Status |
+|---|---|
+| Cloud Run inference API (`/health`, `/predict`, `/recommend`, `/cards/catalog`) | ✅ Deployed |
+| Automated CD pipeline (GitHub Actions → Artifact Registry → Cloud Run) | ✅ Live |
+| Daily model monitoring DAG with Evidently AI drift detection | ✅ Running on Composer |
+| Drift-triggered automatic retraining loop | ✅ Wired via TriggerDagRunOperator |
+| Slack/email notifications for monitoring events and redeployments | ✅ Implemented |
+| React 19 + TypeScript frontend (Vite + Tailwind CSS v4) | ✅ Deployed |
+| JWT authentication (signup, login, user profiles, saved cards wallet) | ✅ Live |
+| 229+ card catalog unified from data pipeline output | ✅ Live |
+| Feedback capture (like/dislike + reason tags) | ✅ Implemented |
+| Structured LLM explanations (2 pros, 2 cons, best_for) | ✅ Live |
+| Per-explanation SHA-256 prompt hashing for LLM drift tracking | ✅ Implemented |
+| Technical poster (A3, rendered at 5262×7440 px) | ✅ Produced |
+| Step-by-step replication guide | ✅ This document |
+| Video demo (5-10 min) | ✅ Submitted |
+
+---
+
+### 2. Deployed Services
+
+| Service | URL |
+|---|---|
+| Serving API | <https://rewardsense-serving-760934308287.us-central1.run.app> |
+| API Interactive Docs | <https://rewardsense-serving-760934308287.us-central1.run.app/docs> |
+| MLflow Tracking Server | <https://mlflow-server-760934308287.us-central1.run.app> |
+| GCP Project | `rewardsense` (`us-central1`) |
+| Artifact Registry | `us-central1-docker.pkg.dev/rewardsense/rewardsense-docker` |
+| Cloud Composer | `rewardsense-composer-env` |
+
+---
+
+### 3. End-To-End Production Architecture
+
+```mermaid
+flowchart TD
+    subgraph Frontend["React Frontend (Cloud Run)"]
+        UI["Vite + React 19 + Tailwind CSS v4"]
+    end
+
+    subgraph ServingAPI["Serving API (Cloud Run)"]
+        FastAPI["FastAPI\n/health /predict /recommend /cards/catalog\n/auth /feedback /transactions /summary"]
+        Scoring["Deterministic Scoring Engine"]
+        PersonML["Personalization Model\n(loaded from MLflow at startup)"]
+        LLMExp["LLM Explanation Generator\n(Gemini 2.5 Flash via Vertex AI)"]
+        DB["SQLite via SQLAlchemy\n(users, wallets, feedback, telemetry)"]
+        Catalog["Card Catalog Module\n229+ cards from merged_cards.json + 9 curated"]
+    end
+
+    subgraph GCP["Google Cloud Platform"]
+        MLflow["MLflow Registry\n(Cloud Run)"]
+        GCS["GCS Buckets\n(DVC store, inference logs,\ndrift reports, MLflow artifacts)"]
+        Composer["Cloud Composer\n(Airflow)"]
+        VertexAI["Vertex AI\n(Gemini 2.5 Flash)"]
+        ArtifactReg["Artifact Registry\n(Docker images)"]
+    end
+
+    subgraph CICD["CI/CD (GitHub Actions)"]
+        CI["Test + Lint + Type Check"]
+        CD["Build → Push → Deploy → Smoke Test"]
+    end
+
+    subgraph Monitoring["Monitoring Pipeline (Composer DAG, daily)"]
+        Collector["Inference Log Collector"]
+        Drift["Evidently AI\nDataDrift + TargetDrift"]
+        PerfTracker["Performance Tracker\np50/p95/p99 latency"]
+        Retrain["TriggerDagRunOperator\n→ model pipeline DAG"]
+        Notifier["Slack / Email Notifier"]
+    end
+
+    UI -->|HTTPS REST| FastAPI
+    FastAPI --> Scoring
+    FastAPI --> PersonML
+    FastAPI --> LLMExp
+    FastAPI --> DB
+    FastAPI --> Catalog
+    PersonML -->|load at startup| MLflow
+    LLMExp -->|Gemini API| VertexAI
+    FastAPI -->|inference logs async| GCS
+    Catalog -->|merged_cards.json| GCS
+
+    CICD --> CI
+    CI --> CD
+    CD -->|docker push| ArtifactReg
+    CD -->|gcloud run deploy| ServingAPI
+
+    Monitoring --> Collector
+    Collector -->|read logs| GCS
+    Collector --> Drift
+    Collector --> PerfTracker
+    Drift -->|drift detected| Retrain
+    Drift -->|HTML report| GCS
+    Retrain -->|trigger| Composer
+    PerfTracker --> Notifier
+    Drift --> Notifier
+```
+
+---
+
+### 4. Epic 1–3: Serving Infrastructure & Automated CD Pipeline
+
+#### 4.1 Artifact Registry & Container Setup
+
+- Docker repository: `us-central1-docker.pkg.dev/rewardsense/rewardsense-docker`
+- Service account `rewardsense-pipeline-sa` granted Artifact Registry Writer role
+- `Dockerfile.serving` — Python 3.11 slim base, serving dependencies, PYTHONPATH set
+
+#### 4.2 Cloud Run Serving Service
+
+- Service: `rewardsense-serving` in `us-central1`
+- Autoscaling: min 0, max 5 instances, concurrency 80
+- Resources: 2 GiB memory, 2 vCPU
+- Service account: `rewardsense-pipeline-sa` (access to MLflow, GCS, Vertex AI)
+- Startup probe on `/health` endpoint
+- Unauthenticated access enabled for demo
+
+**Health check response:**
+
+```json
+{
+  "status": "healthy",
+  "model_version": "v0.1.0",
+  "llm_enabled": true
+}
+```
+
+#### 4.3 Model Loading from MLflow Registry
+
+`src/serving/model_loader.py` — on container startup:
+1. Queries MLflow for the latest `Production`-stage model version
+2. Downloads scikit-learn personalization model from GCS-backed artifact store
+3. Loads model into memory as a singleton (`get_model()`)
+4. Falls back cleanly: if no Production model exists, container exits with descriptive error
+
+#### 4.4 GitHub Actions CD Pipeline
+
+Workflow: `.github/workflows/ci.yml`
+
+```
+push to main
+  └─ test job (lint, type check, unit tests)
+       └─ deploy job (on test pass)
+            ├─ gcloud auth (Workload Identity Federation)
+            ├─ docker build -f Dockerfile.serving
+            ├─ docker push → Artifact Registry (SHA tag + latest)
+            ├─ gcloud run deploy --no-traffic (blue/green)
+            ├─ health check: hit /health on new revision
+            ├─ if pass → switch 100% traffic to new revision
+            ├─ if fail → route traffic back to previous revision (auto-rollback)
+            └─ post-deploy smoke test → /predict with sample payload
+```
+
+#### 4.5 Model-Triggered Redeployment
+
+When the Composer model pipeline DAG pushes a new model to the MLflow `Production` stage, the final DAG task calls the GitHub Actions API to trigger a redeployment. The new container restart picks up the fresh model at startup. Every redeployment logs its trigger source (`manual` / `model_pipeline` / `retrain_pipeline`).
+
+---
+
+### 5. Epic 4–5: Model Monitoring & Drift-Triggered Retraining
+
+#### 5.1 Monitoring DAG Architecture
+
+Daily Composer DAG (`dags/rewardsense_monitoring_pipeline.py`) at 6:00 AM UTC:
+
+```
+collect_inference_data
+    └─ run_drift_detection
+         └─ compute_performance_metrics
+              └─ evaluate_thresholds
+                   ├─ [drift detected] trigger_retrain
+                   └─ send_notification (always)
+```
+
+#### 5.2 Evidently AI Drift Detection (`src/monitoring/drift_detector.py`)
+
+- Reference dataset: training data distribution profile stored in GCS during model training
+- Current dataset: last 7 days of inference logs from `gs://rewardsense-inference-logs/`
+- Runs `DataDriftPreset` (input feature drift) and `TargetDriftPreset` (prediction drift)
+- **Drift thresholds:**
+  - Feature drift: > 30% of features have statistically significant drift → flag
+  - Prediction drift: KL divergence > 0.1 → flag
+- HTML drift report stored in `gs://rewardsense-monitoring/drift-reports/YYYY-MM-DD.html`
+- JSON output includes `drift_detected: bool` and per-feature drift scores
+
+#### 5.3 Performance Metrics Tracking (`src/monitoring/performance_tracker.py`)
+
+- Serving metrics from inference logs: p50/p95/p99 latency, error rate, throughput
+- Model metrics: prediction confidence distribution, score variance
+- Proxy accuracy: if user feedback is available (card clicked/liked → positive signal)
+- Daily JSON snapshots in GCS, queryable by date range
+- Alert condition: p95 latency > 10 seconds
+
+#### 5.4 Automatic Retraining Trigger (`src/monitoring/`)
+
+When thresholds are breached:
+1. `TriggerDagRunOperator` fires the existing `rewardsense_model_pipeline` DAG
+2. Context passed: `trigger_reason`, `drift_report_path`, `threshold_values`
+3. **Guards:** max 1 retrain per 24 hours; skip if retrain already running
+4. The model pipeline's existing validation gate prevents a worse model from being promoted
+
+#### 5.5 Notifications (`src/monitoring/notifier.py`)
+
+Slack webhook messages (structured) for:
+- **Daily monitoring summary:** drift status, top drifted features, latency percentiles
+- **Retrain trigger:** reason, timestamp, link to drift report
+- **Redeployment:** new vs. old model version, performance comparison
+
+Webhook URL stored as Composer environment variable (not in code).
+
+---
+
+### 6. Epic 6: React Frontend
+
+#### 6.1 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Build tool | Vite |
+| Framework | React 19 + TypeScript |
+| Styling | Tailwind CSS v4 |
+| Routing | React Router v7 |
+| Charts | Recharts |
+| HTTP | Fetch API via typed client (`frontend/src/api/client.ts`) |
+| Auth | JWT stored in localStorage |
+| Linting | ESLint + TypeScript strict mode |
+
+#### 6.2 Pages & Features
+
+| Page | Route | Description |
+|---|---|---|
+| Home | `/` | Animated hero with card fan, feature highlights, animated stats counters |
+| Sign Up / Login | `/signup`, `/login` | Email/password auth, JWT persisted |
+| Recommend | `/recommend` | Wallet builder, spending profile, persona selector, card submission |
+| Results | `/results` | Ranked cards with structured explanations, pros/cons, feedback buttons |
+| Transactions | `/transactions` | Opt-in transaction log entry |
+| Summary | `/summary` | Per-category spend breakdown, rewards earned, savings visualization |
+
+#### 6.3 UI Highlights
+
+- **Brand logos:** `RRLogoDarkFlat.png` / `RRLogoLightFlat.png` at 175px in header (dark/light mode variants)
+- **Custom PNG icons:** target, bolt, bulb, chart on homepage feature cards (replacing emojis)
+- **Structured explanations:** green-check pros, amber-warning cons, "Best for" line per card
+- **FeedbackButtons component:** thumbs up/down → optional reason tag pills (pill chips) → "Thanks!" confirmation
+- **Confetti animation** on top recommendation reveal
+- **Dark mode** with `prefers-color-scheme` + manual toggle
+
+#### 6.4 Run Frontend Locally
+
+```bash
+cd frontend
+npm install
+echo "VITE_API_URL=http://localhost:8000" > .env.local
+npm run dev
+# App: http://localhost:5173
+```
+
+#### 6.5 Build & Type Check
+
+```bash
+cd frontend
+npm run build          # Vite production build
+npm run type-check     # tsc --noEmit (strict mode)
+npm run lint           # ESLint
+```
+
+---
+
+### 7. Expansion Plan — Platform Epics
+
+The expansion plan (`docs/Phase3_Expansion_Plan.pdf`) extends the serving demo into a lightweight user product. All 6 epics are implemented.
+
+#### Epic 1: Account Foundation & User Persistence
+
+| Component | Implementation |
+|---|---|
+| JWT auth | `POST /auth/signup`, `POST /auth/login` — python-jose + passlib + bcrypt |
+| User profiles | `GET /me`, `PUT /me` — SQLAlchemy `User` ORM model |
+| Saved cards (wallet) | `PUT /me/cards` — stored as JSON array of `card_id` strings |
+| Personas | Preset archetypes (Traveler, Foodie, Cash-back Maximizer, etc.) that shape recommendation weighting |
+| ORM | SQLite via SQLAlchemy, auto-migrated on startup |
+
+Key files: `src/app/auth/`, `src/app/users/`, `src/app/db/models.py`
+
+#### Epic 2: Recommendation Experience Expansion
+
+| Feature | Endpoint | Notes |
+|---|---|---|
+| Portfolio recommendations | `POST /recommendations/portfolio` | Score all wallet cards against a spending profile |
+| Single-transaction recommendation | `POST /recommendations/transaction` | Which card to use right now for a given purchase |
+| Savings calculator | Embedded in portfolio response | Projected annual rewards per card vs. annual fee |
+| Card finder | `GET /cards/catalog?find=true` | Discover new cards scoring better than current wallet |
+| Full card catalog | `GET /cards/catalog` | Returns 229+ cards from unified catalog |
+
+Card-specific explanations (`_build_card_explanation()` in `src/app/users/router.py`):
+- Rank 1: "Top pick for your {category} spending. {card} earns {rate}x on {category}, projecting ${projected_savings}/year."
+- Rank 2+: "{card} earns {rate}x on {category}. Projected annual reward: ${projected_savings}."
+- Persona boost: appends "Boosted by your {persona} profile."
+
+Key files: `src/app/users/router.py`, `src/app/cards/catalog.py`, `src/app/users/schemas.py`
+
+#### Epic 3: Transaction Ledger, Summary & Export
+
+| Feature | Endpoint | Notes |
+|---|---|---|
+| Log a transaction | `POST /transactions` | Opt-in; stores merchant, amount, category, MCC code |
+| Transaction history | `GET /transactions` | Paginated, filterable by date range |
+| Spending summary | `GET /summary` | Per-category totals, rewards earned, card utilization |
+| Export | `GET /summary/export` | CSV/XLSX download |
+
+Key files: `src/app/transactions/`
+
+#### Epic 4: Feedback, LLM Quality & Telemetry
+
+**Feedback capture** (`src/app/feedback/`):
+
+```http
+POST /feedback
+{
+  "card_id": "amex_gold",
+  "reaction": "like",
+  "reason_tag": "not_relevant",   // optional
+  "target": "card",               // or "explanation"
+  "recommendation_event_id": 42   // optional, links to recommendation
+}
+```
+
+Allowed `reason_tag` values: `too_expensive`, `not_relevant`, `already_have`, `explanation_unclear`
+
+`FeedbackEvent` ORM columns: `id`, `user_id`, `card_id`, `recommendation_event_id`, `reaction`, `reason_tag`, `target`, `created_at`
+
+---
+
+**Structured LLM explanations** (updated output contract):
+
+```json
+{
+  "summary": "Amex Gold is your top pick for dining.",
+  "pros": [
+    "4x rewards on dining — your highest spending area",
+    "$250/year in projected rewards offsets the $250 annual fee"
+  ],
+  "cons": [
+    "$250/year annual fee requires consistent spending to offset",
+    "No flat-rate cashback — rewards tied to specific categories"
+  ],
+  "best_for": "Frequent diners with high monthly restaurant spend",
+  "confidence": 0.94
+}
+```
+
+Quality filter enforces:
+- Exactly 2 `pros` (non-empty strings)
+- Exactly 2 `cons` (non-empty strings)
+- `best_for` string present
+- `confidence` in [0, 1]
+
+Template fallback generator (`TemplateFallbackGenerator`) produces the same 2-pro/2-con structure deterministically from card scoring data — no LLM call required.
+
+Updated modules: `src/model_pipeline/llm/response_parser.py`, `prompt_builder.py`, `explanation_generator.py`
+
+---
+
+**LLM Telemetry** (`src/app/telemetry/llm_telemetry.py`):
+
+Every explanation generation persists a `LLMTelemetryEvent` row:
+
+| Column | Purpose |
+|---|---|
+| `prompt_version_hash` | SHA-256 of `system_message + user_message` — detects prompt drift |
+| `model_name` | e.g. `gemini-2.5-flash` |
+| `temperature` | Generation temperature |
+| `latency_ms` | Wall-clock explanation latency |
+| `used_fallback` | `true` if LLM failed and template was used |
+| `fallback_reason` | Why the fallback was triggered |
+| `token_estimate` | Estimated token count |
+| `output_quality_score` | Float from `ExplanationQualityFilter.evaluate()` |
+
+Prompt drift is detected by tracking `prompt_version_hash` distribution over time windows. A new hash appearing signals a prompt change; quality score trends per hash reveal quality degradation.
+
+#### Epic 5: Business Monitoring & Reporting
+
+| Feature | Endpoint | Notes |
+|---|---|---|
+| Business metrics | `GET /reports/business-metrics` | Recommendation volume, feedback rates, avg confidence |
+| On-demand report | `GET /reports/generate` | HTML/PDF report for a date range |
+
+#### Epic 6: Frontend Refresh & Design System
+
+- Dark/light mode toggle with `localStorage` persistence + `prefers-color-scheme` initial detection
+- `FeedbackButtons` component: like/dislike icons → reason tag pill chips → "Thanks!" confirmation → disabled state
+- Structured explanation layout in `ResultsPage`: summary paragraph, pros list (green checks), cons list (amber warnings), best-for line
+- Removed monitoring/dashboard pages from nav (simplified for non-technical users)
+- Recharts visualizations for reward breakdowns and spending summaries
+
+---
+
+### 8. Card Catalog Unification
+
+**Problem:** `src/app/users/router.py` and `src/serving/app.py` each had their own hardcoded list of 5 cards, disconnected from the 229+ cards produced by the data pipeline.
+
+**Solution:** `src/app/cards/catalog.py` — single source of truth, imported by both.
+
+```
+merged_cards.json (GCS, data pipeline output)
+    + 9 curated cards (Gemini-enriched category bonuses)
+    → deduplication (curated overrides scraped for same card_id)
+    → CARD_CATALOG (scoring format, 229+ entries)
+    → DISPLAY_CATALOG (UI format with reward_highlights, issuer, image_url)
+```
+
+Exposed singletons:
+
+| Name | Type | Purpose |
+|---|---|---|
+| `CARD_CATALOG` | `List[Dict]` | Full scoring format (universal_base_rate + category_bonuses) |
+| `CARD_CATALOG_BY_ID` | `Dict[str, Dict]` | Fast O(1) lookup by card_id |
+| `DISPLAY_CATALOG` | `List[CardCatalogItem]` | UI format for `/cards/catalog` endpoint |
+| `DISPLAY_CATALOG_BY_ID` | `Dict[str, CardCatalogItem]` | Fast lookup for display data |
+| `get_scoring_rates(card_id)` | `Dict` | Returns `{"reward_rates": {...}}` for a card |
+
+The 9 curated cards carry full category bonus detail (dining 4×, travel 3×, etc.). Scraped cards have `universal_base_rate` only. Curated cards override scraped entries for the same `card_id`.
+
+---
+
+### 9. Technical Poster
+
+An A3 portrait poster was produced for the Google Cambridge presentation:
+
+| File | Description |
+|---|---|
+| `poster/technical_poster.html` | Source HTML (dark theme, orange accents, full system architecture) |
+| `poster/technical_poster.png` | Rendered PNG at 5262×7440 px (3× scale, headless Chrome) |
+
+Poster sections: System Overview, Data Pipeline, Model Pipeline, Deployment Architecture, LLM Explainability, Evaluation Metrics, Tech Stack.
+
+---
+
+### 10. Full Reproduction Steps (Phase 3)
+
+#### 10.1 Prerequisites
+
+- macOS or Linux
+- Python 3.11+
+- Docker Desktop
+- Node.js 20+
+- Google Cloud SDK (`gcloud`, `gsutil`)
+- GCP access to the `rewardsense` project
+- All Phase 1 and Phase 2 prerequisites (see Phase 2 section above)
+
+#### 10.2 Clone & Install Backend
+
+```bash
+git clone https://github.com/avadharj/rewardsense.git
+cd rewardsense
+
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+pip install --upgrade pip
+pip install -r requirements-serving.txt
+pip install -e .
+```
+
+#### 10.3 Environment Configuration
+
+```bash
+cp .env.example .env
+```
+
+Minimum required variables for local serving without LLM:
+
+```bash
+export PYTHONPATH=.
+export JWT_SECRET_KEY=dev-secret-key-change-in-production
+export ENABLE_LLM_EXPLANATIONS=false
+```
+
+For full Gemini-powered explanations:
+
+```bash
+export ENABLE_LLM_EXPLANATIONS=true
+export GCP_PROJECT_ID=rewardsense
+export GCP_REGION=us-central1
+export VERTEX_LOCATION=us-central1
+export LLM_MODEL=gemini-2.5-flash
+export LLM_TEMPERATURE=0.2
+export LLM_TIMEOUT_SEC=10
+export MLFLOW_TRACKING_URI=https://mlflow-server-760934308287.us-central1.run.app
+```
+
+Full environment variable reference:
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `JWT_SECRET_KEY` | Yes | Secret for signing JWT tokens | any-64-char-random-string |
+| `ENABLE_LLM_EXPLANATIONS` | Yes | Enable Gemini explanations | `true` / `false` |
+| `GCP_PROJECT_ID` | If LLM on | GCP project ID | `rewardsense` |
+| `GCP_REGION` | If LLM on | GCP region | `us-central1` |
+| `VERTEX_LOCATION` | If LLM on | Vertex AI region | `us-central1` |
+| `LLM_MODEL` | If LLM on | Gemini model name | `gemini-2.5-flash` |
+| `LLM_TEMPERATURE` | No | Generation temperature | `0.2` |
+| `LLM_TIMEOUT_SEC` | No | Per-explanation timeout (seconds) | `10` |
+| `MLFLOW_TRACKING_URI` | No | MLflow tracking server URL | `https://mlflow-server-760934308287.us-central1.run.app` |
+| `SLACK_WEBHOOK_URL` | No | Slack webhook for monitoring notifications | `https://hooks.slack.com/...` |
+| `GCP_BUCKET_NAME` | No | GCS bucket for DVC data | `rewardsense-dvc-store` |
+
+#### 10.4 Start Serving API Locally
+
+```bash
+uvicorn src.app.server:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+Verify:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"healthy","model_version":"unknown","llm_explanations_enabled":false}
+
+curl http://localhost:8000/docs
+# Opens interactive Swagger UI
+```
+
+#### 10.5 Create an Account & Test the API
+
+```bash
+# Sign up
+curl -X POST http://localhost:8000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"securepassword123"}'
+
+# Log in (get JWT token)
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"securepassword123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Get card catalog (229+ cards)
+curl http://localhost:8000/cards/catalog | python3 -m json.tool | head -40
+
+# Get portfolio recommendations
+curl -X POST http://localhost:8000/recommendations/portfolio \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "spending_profile": {"dining": 500, "travel": 300, "groceries": 400},
+    "wallet_card_ids": ["amex_gold", "chase_sapphire"]
+  }'
+
+# Submit feedback
+curl -X POST http://localhost:8000/feedback \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"card_id":"amex_gold","reaction":"like","target":"card"}'
+```
+
+#### 10.6 Start Frontend Locally
+
+```bash
+cd frontend
+npm install
+echo "VITE_API_URL=http://localhost:8000" > .env.local
+npm run dev
+# Open http://localhost:5173
+```
+
+#### 10.7 Run the Test Suite
+
+```bash
+# Full suite
+pytest tests/ --no-cov -q
+
+# Specific areas
+pytest tests/app/ -q                  # Auth, recommendations, feedback, telemetry
+pytest tests/model_pipeline/ -q       # Scoring engine, LLM, personalization
+
+# With coverage (model pipeline)
+pytest tests/model_pipeline/ \
+  --cov=src/model_pipeline \
+  --cov-report=term-missing
+```
+
+Expected result: all tests pass (1177+ passed).
+
+#### 10.8 Deploy Serving API to Cloud Run
+
+```bash
+# Authenticate Docker to Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+# Build serving image
+docker build -f Dockerfile.serving \
+  -t us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:latest .
+
+# Push to Artifact Registry
+docker push us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:latest
+
+# Deploy to Cloud Run
+gcloud run deploy rewardsense-serving \
+  --image us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:latest \
+  --region us-central1 \
+  --service-account rewardsense-pipeline-sa@rewardsense.iam.gserviceaccount.com \
+  --set-env-vars "MLFLOW_TRACKING_URI=https://mlflow-server-760934308287.us-central1.run.app" \
+  --set-env-vars "GCP_PROJECT_ID=rewardsense" \
+  --set-env-vars "GCP_REGION=us-central1" \
+  --set-env-vars "MODEL_STAGE=Production" \
+  --set-env-vars "ENABLE_LLM_EXPLANATIONS=true" \
+  --set-env-vars "LLM_MODEL=gemini-2.5-flash" \
+  --set-env-vars "VERTEX_LOCATION=us-central1" \
+  --memory 2Gi \
+  --cpu 2 \
+  --min-instances 0 \
+  --max-instances 5 \
+  --concurrency 80 \
+  --allow-unauthenticated
+
+# Verify deployment
+curl https://rewardsense-serving-760934308287.us-central1.run.app/health
+```
+
+#### 10.9 Deploy Frontend to Cloud Run
+
+```bash
+cd frontend
+
+# Production build
+npm run build
+
+# Build and push frontend Docker image
+docker build -t us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/frontend:latest .
+docker push us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/frontend:latest
+
+# Deploy
+gcloud run deploy rewardsense-frontend \
+  --image us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/frontend:latest \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars "VITE_API_URL=https://rewardsense-serving-760934308287.us-central1.run.app"
+```
+
+#### 10.10 Automated CD (GitHub Actions)
+
+Every merge to `main` automatically:
+1. Runs lint, type checks, and unit tests
+2. Builds the serving Docker image tagged with commit SHA + `latest`
+3. Pushes to Artifact Registry
+4. Deploys to Cloud Run with `--no-traffic` (blue/green)
+5. Runs health check on the new revision
+6. Routes 100% traffic to new revision on success; rolls back to previous on failure
+7. Runs post-deploy smoke test (sample `/predict` request)
+8. Sends Slack notification on success
+
+Workflow file: `.github/workflows/ci.yml`
+
+#### 10.11 Deploy Monitoring DAG
+
+```bash
+# Upload monitoring modules to Composer
+gsutil -m cp -r src/monitoring/ \
+  gs://$(gcloud composer environments describe rewardsense-composer-env \
+    --location us-central1 --format="value(config.dagGcsPrefix)")/dags/monitoring/
+
+# Upload monitoring DAG
+gsutil cp dags/rewardsense_monitoring_pipeline.py \
+  gs://$(gcloud composer environments describe rewardsense-composer-env \
+    --location us-central1 --format="value(config.dagGcsPrefix)")/dags/
+
+# Set Slack webhook variable in Composer
+gcloud composer environments run rewardsense-composer-env \
+  --location us-central1 \
+  variables set -- SLACK_WEBHOOK_URL "https://hooks.slack.com/your-webhook"
+
+# Trigger manually to verify
+gcloud composer environments run rewardsense-composer-env \
+  --location us-central1 \
+  dags trigger -- rewardsense_monitoring_pipeline
+```
+
+#### 10.12 Full Phase 3 Checklist
+
+- [ ] `requirements-serving.txt` installed, `pip install -e .` succeeded
+- [ ] `.env` configured with `JWT_SECRET_KEY` and GCP vars
+- [ ] `uvicorn src.app.server:create_app --factory --port 8000` starts without errors
+- [ ] `curl http://localhost:8000/health` returns `{"status":"healthy",...}`
+- [ ] `npm run dev` starts frontend at `http://localhost:5173`
+- [ ] User signup → login → recommendations flow works end-to-end locally
+- [ ] `pytest tests/ --no-cov -q` passes
+- [ ] Docker image builds: `docker build -f Dockerfile.serving .`
+- [ ] Cloud Run deployment succeeds: `curl https://rewardsense-serving-760934308287.us-central1.run.app/health`
+- [ ] GitHub Actions CD workflow passes on merge to `main`
+- [ ] Monitoring DAG appears in Composer UI and runs on schedule
+
+---
+
+### 11. Evaluation Criteria Coverage
+
+Requirements from `Deployment_pipeline.pdf` (GCP cloud deployment track):
+
+| Evaluation Criterion | Implementation | Evidence |
+|---|---|---|
+| **Automated deployment scripts** | GitHub Actions CI/CD pipeline | `.github/workflows/ci.yml`, `.github/workflows/model_cd.yaml` |
+| **Repository connection for auto-redeployment** | CD job triggers on every merge to `main`; model pipeline DAG triggers redeployment via GitHub Actions API | `.github/workflows/ci.yml` deploy job |
+| **Detailed replication steps** | Section 10 of this document — step-by-step with exact commands | This README |
+| **Model monitoring (drift detection)** | Evidently AI `DataDriftPreset` + `TargetDriftPreset`, daily Composer DAG | `src/monitoring/drift_detector.py`, `dags/rewardsense_monitoring_pipeline.py` |
+| **Automatic retraining trigger** | `TriggerDagRunOperator` fires model pipeline DAG when drift/decay thresholds breached | `src/monitoring/`, drift threshold logic |
+| **Automated retrain pipeline** | Existing model pipeline DAG: retrain → validate → bias gate → registry push → redeploy | `dags/rewardsense_model_pipeline.py` |
+| **Notifications** | Slack webhook notifications for monitoring summary, retrain trigger, redeployment | `src/monitoring/notifier.py` |
+| **Environment configuration files** | `docker-compose.yaml`, `Dockerfile.serving`, `.env.example`, `requirements-serving.txt` | Root directory |
+| **Logging** | Inference logs → GCS (async), LLM telemetry → SQLite, MLflow metrics per request | `src/serving/inference_logger.py`, `src/app/telemetry/` |
+| **CI/CD integration** | Full GitHub Actions pipeline: test → build → deploy | `.github/workflows/ci.yml` |
+| **Video demonstration** | 5-10 min walkthrough of full deployment flow on fresh environment | Submitted separately |
+
+---
+
+### 12. Phase 3 Troubleshooting
+
+**`ModuleNotFoundError: src`** — ensure editable install and PYTHONPATH:
+
+```bash
+pip install -e .
+export PYTHONPATH=.
+```
+
+**JWT auth errors (`401 Unauthorized`)** — ensure `JWT_SECRET_KEY` is set and matches between requests:
+
+```bash
+export JWT_SECRET_KEY=your-consistent-secret
+```
+
+**Gemini/Vertex AI `403 Permission denied`** — authenticate ADC and ensure service account has Vertex AI User role:
+
+```bash
+gcloud auth application-default login
+gcloud projects add-iam-policy-binding rewardsense \
+  --member="serviceAccount:rewardsense-pipeline-sa@rewardsense.iam.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+```
+
+**Card catalog loads 0 cards** — if `merged_cards.json` is not in GCS, the catalog falls back to the 9 curated cards automatically. To populate: run the data pipeline DAG on Composer and verify `gs://rewardsense-dvc-store/data/processed/current/` contains the merged file.
+
+**Cloud Run `HEALTH_CHECK_FAILED` on deploy** — check startup logs:
+
+```bash
+gcloud run services logs read rewardsense-serving --region us-central1 --limit 50
+```
+
+**Frontend CORS errors** — ensure the serving API's CORS config allows the frontend origin. The `create_app()` factory reads `ALLOWED_ORIGINS` env var; set it to your frontend URL.
+
+**SQLite database persists across local restarts** — `rewardsense.db` is created in the working directory. To reset:
+
+```bash
+rm rewardsense.db
+uvicorn src.app.server:create_app --factory --port 8000
+# Tables auto-recreated on startup
+```
+
+---
+
+### 13. Team
+
+Aditya Shenoy · Akhilesh Kasturi · Arjun Vinay Avadhani · Rahul Suresh · Vidya Kalyandurg
+
+Presented at **Google Cambridge office**.
+
+Repository: [github.com/avadharj/rewardsense](https://github.com/avadharj/rewardsense)
