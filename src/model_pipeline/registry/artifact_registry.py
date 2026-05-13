@@ -51,7 +51,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, MutableMapping, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ class RegistryClient:
     # Authentication
     # ------------------------------------------------------------------
 
-    def _get_auth_headers(self) -> Dict[str, str]:
+    def _get_auth_headers(self) -> MutableMapping[str, str | bytes]:
         """Get authorization headers with a fresh access token."""
         if self._credentials is None:
             raise RuntimeError(
