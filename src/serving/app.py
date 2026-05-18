@@ -199,7 +199,18 @@ class MonitoringResponse(StrictModel):
     retrain_history: List[MonitoringRetrainEvent] = Field(default_factory=list)
 
 
-app = FastAPI(title="RewardSense Inference API", version="0.2.0")
+from contextlib import asynccontextmanager
+
+from src.serving.model_loader import load_model as _load_model
+
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    _load_model()
+    yield
+
+
+app = FastAPI(title="RewardSense Inference API", version="0.2.0", lifespan=_lifespan)
 app.state.started_at = time.monotonic()
 
 app.add_middleware(
