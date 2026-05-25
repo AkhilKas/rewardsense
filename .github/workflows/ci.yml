@@ -160,7 +160,202 @@ jobs:
         fail_ci_if_error: false
 
   # ==================================================================
-  # 4. Model Build - Docker Verification
+  # 4. Deploy — Build & Push Serving Container to Artifact Registry
+  # Story 3.1: Runs on merge to main after all tests pass.
+  # ==================================================================
+  deploy:
+    name: "Deploy: Build & Push Serving Container"
+    needs: [test, model-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:${{ github.sha }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Authenticate to GCP
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build and push serving image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.serving
+        push: true
+        tags: |
+          us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:${{ github.sha }}
+          us-central1-docker.pkg.dev/rewardsense/rewardsense-docker/serving:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # ==================================================================
+  # 5. Rollout — Deploy to Cloud Run with traffic switching & rollback
+  # Story 3.2: Runs after serving container is pushed to Artifact Registry.
+  # ==================================================================
+  rollout:
+    name: "Rollout: Deploy to Cloud Run"
+    needs: [deploy]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SERVICE: rewardsense-serving
+      REGION: us-central1
+      PROJECT: rewardsense
+      IMAGE: ${{ needs.deploy.outputs.image }}
+
+    steps:
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Capture current stable revision
+      id: current
+      run: |
+        CURRENT=$(gcloud run services describe "$SERVICE" \
+          --region="$REGION" --project="$PROJECT" \
+          --format="value(status.traffic[0].revisionName)")
+        echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
+        echo "Current stable revision: $CURRENT"
+
+    - name: Deploy new revision with no traffic
+      id: new_revision
+      run: |
+        gcloud run deploy "$SERVICE" \
+          --image="$IMAGE" \
+          --region="$REGION" \
+          --project="$PROJECT" \
+          --allow-unauthenticated \
+          --no-traffic \
+          --quiet
+        NEW=$(gcloud run services describe "$SERVICE" \
+          --region="$REGION" --project="$PROJECT" \
+          --format="value(status.latestCreatedRevisionName)")
+        echo "revision=$NEW" >> "$GITHUB_OUTPUT"
+        echo "New revision: $NEW"
+
+    - name: Wait for new revision to become healthy (60s)
+      id: health_check
+      run: |
+        REVISION="${{ steps.new_revision.outputs.revision }}"
+        echo "Polling health for revision: $REVISION"
+        for i in $(seq 1 12); do
+          STATUS=$(gcloud run revisions describe "$REVISION" \
+            --region="$REGION" --project="$PROJECT" \
+            --format="json" \
+            | python3 -c "
+        import sys, json
+        data = json.load(sys.stdin)
+        conditions = data.get('status', {}).get('conditions', [])
+        ready = next((c for c in conditions if c.get('type') == 'Ready'), {})
+        print(ready.get('status', 'Unknown'))
+        " 2>/dev/null || echo "Unknown")
+          echo "Attempt $i/12: Ready=$STATUS"
+          [ "$STATUS" = "True" ] && exit 0
+          [ "$STATUS" = "False" ] && { echo "Revision failed to start."; exit 1; }
+          sleep 5
+        done
+        echo "Timed out waiting for revision to become healthy."
+        exit 1
+
+    - name: Switch 100% traffic to new revision
+      if: success()
+      run: |
+        gcloud run services update-traffic "$SERVICE" \
+          --region="$REGION" --project="$PROJECT" \
+          --to-revisions="${{ steps.new_revision.outputs.revision }}=100"
+        echo "Traffic switched to ${{ steps.new_revision.outputs.revision }}"
+
+    - name: Rollback traffic to previous revision
+      if: failure() && steps.new_revision.outcome == 'success'
+      run: |
+        PREVIOUS="${{ steps.current.outputs.revision }}"
+        echo "Health check failed — keeping traffic on $PREVIOUS"
+        gcloud run services update-traffic "$SERVICE" \
+          --region="$REGION" --project="$PROJECT" \
+          --to-revisions="$PREVIOUS=100"
+
+    - name: Notify Slack on success
+      if: success()
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        if [ -z "$SLACK_WEBHOOK_URL" ]; then
+          echo "SLACK_WEBHOOK_URL not configured — skipping notification."
+          exit 0
+        fi
+        curl -s -X POST "$SLACK_WEBHOOK_URL" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"text\": \":rocket: *RewardSense serving deployed*\n• Revision: \`${{ steps.new_revision.outputs.revision }}\`\n• Commit: \`${{ github.sha }}\`\n• Image: \`$IMAGE\`\"
+          }"
+
+  # ==================================================================
+  # 6. Serving Smoke Test — post-deploy integration check
+  # Runs after rollout completes and traffic is switched.
+  # ==================================================================
+  serving-smoke-test:
+    name: "Smoke Test: Serving API"
+    needs: [rollout]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      SERVING_URL: ${{ vars.SERVING_URL || 'https://rewardsense-serving-760934308287.us-central1.run.app' }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install smoke test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pytest pyyaml
+
+    - name: Run serving smoke tests
+      run: |
+        pytest tests/integration/test_serving_deployment.py \
+          -m integration \
+          -v \
+          --tb=short \
+          --override-ini="addopts="
+      env:
+        SERVING_URL: ${{ env.SERVING_URL }}
+
+    - name: Notify on smoke test failure
+      if: failure()
+      run: |
+        echo "::error::Serving smoke test failed for $SERVING_URL — check Cloud Run logs."
+
+  # ==================================================================
+  # 7. Model Build - Docker Verification
   # ==================================================================
   model-build:
     name: "Build: Model Docker Image"

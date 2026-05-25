@@ -1,4 +1,0 @@
-[core]
-    remote = gcs-remote
-['remote "gcs-remote"']
-    url = gs://rewardsense-dvc-store
