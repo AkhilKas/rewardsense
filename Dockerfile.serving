@@ -111,15 +111,8 @@ ENV UVICORN_WORKERS=2
 EXPOSE 8080
 
 # ---- Health check ----
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl --fail http://localhost:8080/health || exit 1
-
-# ---- Startup script ----
-# Fetches merged_cards.json from GCS before starting the server so the
-# catalog always reflects the latest pipeline run without baking data
-# into the image.  Falls back gracefully if GCS is unreachable.
-COPY --chown=appuser:appgroup scripts/fetch_catalog.sh /app/scripts/fetch_catalog.sh
-RUN chmod +x /app/scripts/fetch_catalog.sh
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl --fail http://localhost:${PORT:-8080}/health || exit 1
 
 # ---- Entrypoint ----
-CMD ["/bin/sh", "-c", "/app/scripts/fetch_catalog.sh && uvicorn serving.app:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS} --log-level info"]
+CMD ["/bin/sh", "-c", "uvicorn serving.app:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS} --log-level info"]
