@@ -63,20 +63,24 @@ airflow-webserver.pid
 standalone_admin_password.txt
 infrastructure/airflow_dags/__pycache__/
 
-# DVC
-/.dvc/tmp
-/.dvc/cache
-
-# Data (DVC tracked)
+# Data (generated — regenerate via scripts/download_data.py + transform pipeline)
 /data/raw/*
 /data/processed/*
 /data/interim/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
-!data/processed/current/
-!data/processed/current/*.dvc
 !data/interim/.gitkeep
 !data/data_card.md
+
+# Generated data subdirectories
+data/processed/current/offers/
+data/processed/current/synthetic/
+data/processed/current/transformed/
+data/processed/current/manifest_*.json
+
+# DVC runtime files (lock files, not config)
+.dvc/tmp/
+archive/dvc/dvc_config/tmp/
 
 # Profiling outputs (generated files)
 data/profiling/history/*.json
@@ -130,11 +134,13 @@ requirements.txt.backup
 docs/_build/
 site/
 
-# Model artifacts
+# Model artifacts (large trained models — only commit intentional small ones)
 models/*.pkl
 models/*.h5
 models/*.pt
+models/personalization/
 !models/.gitkeep
+!models/personalization.joblib
 
 # Kubernetes
 *.secret.yaml
