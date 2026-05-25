@@ -54,6 +54,7 @@ COPY setup.py ./setup.py
 COPY README.md ./README.md
 COPY src/ ./src/
 COPY config/ ./config/
+COPY models/ ./models/
 
 # ---- Copy built frontend into /app/static ----
 COPY --from=frontend-build /frontend/dist ./static
@@ -77,6 +78,10 @@ ENV ENABLE_MLFLOW_TRACKING=false
 
 # LLM explanations disabled by default; set to "true" + supply GCP creds to enable
 ENV ENABLE_LLM_EXPLANATIONS=false
+
+# Load model from local file — skips MLflow entirely
+ENV MODEL_LOCAL_PATH=/app/models/personalization.joblib
+ENV MODEL_LOAD_REQUIRED=false
 
 # Gemini merchant category classification at request time (keyword map fallback if unavailable)
 ENV ENABLE_LLM_CATEGORY=true
@@ -117,4 +122,4 @@ COPY --chown=appuser:appgroup scripts/fetch_catalog.sh /app/scripts/fetch_catalo
 RUN chmod +x /app/scripts/fetch_catalog.sh
 
 # ---- Entrypoint ----
-CMD ["/bin/sh", "-c", "/app/scripts/fetch_catalog.sh && uvicorn app.server:create_app --factory --host 0.0.0.0 --port 8080 --workers ${UVICORN_WORKERS} --log-level info"]
+CMD ["/bin/sh", "-c", "/app/scripts/fetch_catalog.sh && uvicorn serving.app:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS} --log-level info"]
