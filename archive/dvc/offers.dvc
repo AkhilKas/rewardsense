@@ -1,0 +1,6 @@
+outs:
+- md5: 6fda83cd53c09954e8d77d27abcb9b37.dir
+  size: 1200876
+  nfiles: 11
+  hash: md5
+  path: offers
