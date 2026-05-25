@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 import time
 import uuid
@@ -22,7 +23,7 @@ from src.model_pipeline.scoring.card_ranker import CardRanker
 from src.model_pipeline.scoring.merchant_mapper import MerchantCategoryMapper
 from src.model_pipeline.scoring.transaction_scorer import TransactionScorer
 from src.serving.inference_logger import build_log_record, log_inference
-from src.serving.model_loader import get_model, get_model_version
+from src.serving.model_loader import get_model, get_model_version, load_model as _load_model
 
 # ---------------------------------------------------------------------------
 # Lazy LLM imports — only needed when ENABLE_LLM_EXPLANATIONS is set
@@ -197,11 +198,6 @@ class MonitoringResponse(StrictModel):
         default_factory=MonitoringServingMetrics
     )
     retrain_history: List[MonitoringRetrainEvent] = Field(default_factory=list)
-
-
-from contextlib import asynccontextmanager
-
-from src.serving.model_loader import load_model as _load_model
 
 
 @asynccontextmanager
