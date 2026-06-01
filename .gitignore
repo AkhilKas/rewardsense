@@ -166,3 +166,4 @@ models/*.pkl
 data/reference/
 data/demo_inference_logs/
 data/monitoring/
+.vercel
