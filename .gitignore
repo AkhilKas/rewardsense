@@ -116,6 +116,8 @@ gx/plugins/
 !frontend/package.json
 !frontend/package-lock.json
 !frontend/tsconfig.json
+!vercel.json
+!render.yaml
 *-key.json
 service-account*.json
 
