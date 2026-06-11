@@ -8,10 +8,12 @@ services:
       - key: MODEL_LOCAL_PATH
         value: /app/models/personalization.joblib
       - key: MODEL_LOAD_REQUIRED
-        value: false
+        value: "false"
       - key: ENABLE_LLM_EXPLANATIONS
-        value: false
+        value: "false"
+      - key: ENABLE_MLFLOW_TRACKING
+        value: "false"
       - key: UVICORN_WORKERS
-        value: 1
+        value: "1"
       - key: CORS_ORIGINS
-        sync: false
+        value: ""

@@ -73,7 +73,7 @@ ENV EXECUTION_ENV=local
 # MLflow tracking URI (override in docker-compose / Cloud Run env)
 ENV MLFLOW_TRACKING_URI=http://mlflow-server:5000
 
-# Disable MLflow tracking by default in serving; enable via env override
+# Disable MLflow tracking — no MLflow server in portfolio deployment
 ENV ENABLE_MLFLOW_TRACKING=false
 
 # LLM explanations disabled by default; set to "true" + supply GCP creds to enable
@@ -115,4 +115,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl --fail http://localhost:${PORT:-8080}/health || exit 1
 
 # ---- Entrypoint ----
-CMD ["/bin/sh", "-c", "uvicorn serving.app:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS} --log-level info"]
+CMD ["/bin/sh", "-c", "uvicorn app.server:create_app --factory --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS} --log-level info"]
