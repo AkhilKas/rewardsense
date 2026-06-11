@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
-import VerificationBanner from "./VerificationBanner";
 import { useAuth } from "../context/AuthContext";
 import { applyThemePreference } from "../hooks/useTheme";
 
@@ -259,8 +258,6 @@ export default function Layout() {
           </nav>
         )}
       </header>
-
-      <VerificationBanner />
 
       <main className="flex-1">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
