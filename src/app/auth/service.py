@@ -47,12 +47,14 @@ def _send_verification_email(email: str, otp: str) -> None:
 
     try:
         import resend
+
         resend.api_key = api_key
-        resend.Emails.send({
-            "from": f"RewardSense <{from_address}>",
-            "to": [email],
-            "subject": "Your RewardSense verification code",
-            "html": f"""
+        resend.Emails.send(
+            {
+                "from": f"RewardSense <{from_address}>",
+                "to": [email],
+                "subject": "Your RewardSense verification code",
+                "html": f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#c2651a">Verify your email</h2>
                     <p>Enter this code to verify your RewardSense account:</p>
@@ -67,12 +69,15 @@ def _send_verification_email(email: str, otp: str) -> None:
                     </p>
                 </div>
             """,
-        })
+            }
+        )
     except Exception as exc:
         logger.error("Failed to send verification email to %s: %s", email, exc)
 
 
-def signup(db: Session, email: str, password: str, display_name: str) -> tuple[User, str]:
+def signup(
+    db: Session, email: str, password: str, display_name: str
+) -> tuple[User, str]:
     """Create a new user, generate OTP, send verification email.
 
     Returns (user, otp).
@@ -90,7 +95,8 @@ def signup(db: Session, email: str, password: str, display_name: str) -> tuple[U
         display_name=display_name,
         is_verified=False,
         email_otp_hash=_hash_otp(otp),
-        otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
+        otp_expires_at=datetime.now(timezone.utc)
+        + timedelta(minutes=OTP_EXPIRY_MINUTES),
     )
     db.add(user)
     db.flush()
@@ -128,23 +134,32 @@ def verify_otp(db: Session, user_id: int, otp: str) -> User:
     """Verify OTP and mark the user as verified."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+        )
 
     if user.is_verified:
         return user
 
     if not user.email_otp_hash or not user.otp_expires_at:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No pending verification.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No pending verification."
+        )
 
     expires_at = user.otp_expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
     if datetime.now(timezone.utc) > expires_at:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired.",
+        )
 
     if _hash_otp(otp) != user.email_otp_hash:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code."
+        )
 
     user.is_verified = True
     user.email_otp_hash = None
@@ -158,13 +173,19 @@ def resend_otp(db: Session, user_id: int) -> None:
     """Generate a fresh OTP and resend the verification email."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+        )
     if user.is_verified:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already verified.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already verified."
+        )
 
     otp = _generate_otp()
     user.email_otp_hash = _hash_otp(otp)
-    user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    user.otp_expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=OTP_EXPIRY_MINUTES
+    )
     db.commit()
 
     _send_verification_email(user.email, otp)
