@@ -35,6 +35,9 @@ class User(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    is_verified = Column(Boolean, nullable=False, default=False)
+    email_otp_hash = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     credential = relationship(
         "AuthCredential",
