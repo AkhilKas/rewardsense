@@ -170,6 +170,7 @@ export async function signup(payload: SignupRequest): Promise<TokenResponse> {
       token_type: "bearer",
       user_id: 1,
       display_name: payload.display_name,
+      is_verified: false,
     };
   }
   const res = await fetch(`${API_BASE_URL}/auth/signup`, {
@@ -181,6 +182,24 @@ export async function signup(payload: SignupRequest): Promise<TokenResponse> {
   return res.json() as Promise<TokenResponse>;
 }
 
+export async function verifyEmail(otp: string): Promise<TokenResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ otp }),
+  });
+  if (!res.ok) throw await buildApiError(res);
+  return res.json() as Promise<TokenResponse>;
+}
+
+export async function resendOtp(): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/auth/resend-otp`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw await buildApiError(res);
+}
+
 export async function login(payload: LoginRequest): Promise<TokenResponse> {
   if (USE_MOCK) {
     return {
@@ -188,6 +207,7 @@ export async function login(payload: LoginRequest): Promise<TokenResponse> {
       token_type: "bearer",
       user_id: 1,
       display_name: "Demo User",
+      is_verified: true,
     };
   }
   const res = await fetch(`${API_BASE_URL}/auth/login`, {

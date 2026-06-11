@@ -150,6 +150,7 @@ export interface TokenResponse {
   token_type: "bearer";
   user_id: number;
   display_name: string;
+  is_verified: boolean;
 }
 
 export interface CardListRequest {
