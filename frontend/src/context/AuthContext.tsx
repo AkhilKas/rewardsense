@@ -11,6 +11,8 @@ import {
   login as loginRequest,
   logout as logoutRequest,
   signup as signupRequest,
+  verifyEmail as verifyEmailRequest,
+  resendOtp as resendOtpRequest,
 } from "../api/client";
 import type { UserProfile } from "../types";
 import { applyThemePreference } from "../hooks/useTheme";
@@ -23,6 +25,7 @@ interface AuthUser {
   dark_mode: boolean;
   reward_preference: string;
   saved_card_ids: string[];
+  is_verified: boolean;
 }
 
 interface AuthContextValue {
@@ -35,9 +38,11 @@ interface AuthContextValue {
     email: string,
     password: string,
     displayName: string,
-  ) => Promise<void>;
+  ) => Promise<{ is_verified: boolean }>;
   logout: () => Promise<void>;
   setUserDarkMode: (darkMode: boolean) => void;
+  verifyEmail: (otp: string) => Promise<void>;
+  resendOtp: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -60,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dark_mode: profile.dark_mode,
       reward_preference: profile.reward_preference,
       saved_card_ids: profile.saved_card_ids ?? [],
+      is_verified: (profile as UserProfile & { is_verified?: boolean }).is_verified ?? false,
     };
   }
 
@@ -137,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     displayName: string,
-  ): Promise<void> {
+  ): Promise<{ is_verified: boolean }> {
     setIsLoadingAuth(true);
     try {
       const auth = await signupRequest({
@@ -145,15 +151,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         display_name: displayName,
       });
-      // Persist token before GET /me since client auth headers read localStorage.
       localStorage.setItem(TOKEN_KEY, auth.access_token);
       setToken(auth.access_token);
       const profile = await getMe();
       setUser(toAuthUser(profile));
       applyThemePreference(profile.dark_mode ? "dark" : "light");
+      return { is_verified: auth.is_verified };
     } finally {
       setIsLoadingAuth(false);
     }
+  }
+
+  async function verifyEmail(otp: string): Promise<void> {
+    const auth = await verifyEmailRequest(otp);
+    setUser((prev) => prev ? { ...prev, is_verified: auth.is_verified } : prev);
+  }
+
+  async function resendOtp(): Promise<void> {
+    await resendOtpRequest();
   }
 
   async function logout(): Promise<void> {
@@ -180,6 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signup,
         logout,
         setUserDarkMode,
+        verifyEmail,
+        resendOtp,
       }}
     >
       {children}
